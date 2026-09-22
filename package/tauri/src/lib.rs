@@ -174,6 +174,7 @@ pub fn run() {
         .expect("error while building AI Companion")
         .run(|app_handle, event| {
             match event {
+                #[cfg(target_os = "macos")]
                 RunEvent::Reopen { .. } => show_main_window(app_handle),
                 RunEvent::Exit => kill_backend(app_handle),
                 _ => {}
