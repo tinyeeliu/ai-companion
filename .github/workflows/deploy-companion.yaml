@@ -48,6 +48,7 @@ jobs:
         with:
           name: companion-${{ matrix.artifact }}
           if-no-files-found: error
+          retention-days: 7
           path: |
             package/tauri/target/**/bundle/dmg/*.dmg
             package/tauri/target/**/bundle/nsis/*-setup.exe
