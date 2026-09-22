@@ -949,7 +949,8 @@ td.summary {
 .json-head {
   display: flex;
   align-items: center;
-  justify-content: flex-start;
+  /* Label on the left, copy action pinned to the right edge of the pane. */
+  justify-content: space-between;
   gap: 4px;
 }
 

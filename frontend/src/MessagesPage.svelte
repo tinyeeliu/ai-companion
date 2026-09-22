@@ -3,6 +3,7 @@
     getConnection,
     getMessage,
     listMessages,
+    replayMessage,
     MESSAGE_STATUSES,
     MESSAGE_TYPES,
     type ChatMessageDetail,
@@ -46,6 +47,13 @@
   let detailBusy = $state(false);
   let reply = $state<ChatMessageListItem | null>(null);
   let requestSeq = 0;
+  /** Row awaiting replay confirmation; the click only opens the dialog. */
+  let replayTarget = $state<ChatMessageListItem | null>(null);
+  /** Row whose replay request is in flight. */
+  let replayingId = $state<number | null>(null);
+  /** Row replayed a moment ago, for the transient tick. */
+  let replayedId = $state<number | null>(null);
+  let replayTimer: ReturnType<typeof setTimeout> | undefined;
 
   const pages = $derived(Math.max(1, Math.ceil(total / Math.max(limit, 1))));
   const filtered = $derived(
@@ -115,6 +123,34 @@
       error = err instanceof Error ? err.message : String(err);
     } finally {
       detailBusy = false;
+    }
+  }
+
+  /**
+   * Replay re-sends the message to the cloud, so it asks first. The click itself
+   * never sends.
+   */
+  function askReplay(row: ChatMessageListItem): void {
+    replayTarget = row;
+  }
+
+  async function confirmReplay(): Promise<void> {
+    const row = replayTarget;
+    if (row == null) return;
+    replayTarget = null;
+    replayingId = row.id;
+    error = '';
+    try {
+      await replayMessage(params.connectionId, row.id);
+      replayedId = row.id;
+      if (replayTimer != null) clearTimeout(replayTimer);
+      replayTimer = setTimeout(() => {
+        replayedId = null;
+      }, 2000);
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+    } finally {
+      replayingId = null;
     }
   }
 </script>
@@ -232,8 +268,8 @@
                     onclick={() => (reply = row)}
                   >
                     <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                      <path d="M6.5 3.5 3 7l3.5 3.5" />
-                      <path d="M3 7h5.5A3.5 3.5 0 0 1 12 10.5V12" />
+                      <path d="M13.75 1.25 6.875 8.125" />
+                      <path d="M13.75 1.25 9.375 13.75 6.875 8.125 1.25 5.625Z" />
                     </svg>
                   </button>
                   <button
@@ -244,11 +280,36 @@
                     disabled={detailBusy}
                     onclick={() => void openDetail(row.id)}
                   >
-                    <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                      <path d="M1.5 7.5S4 3.5 7.5 3.5 13.5 7.5 13.5 7.5 11 11.5 7.5 11.5 1.5 7.5 1.5 7.5Z" />
-                      <circle cx="7.5" cy="7.5" r="2.2" />
+                    <svg width="17" height="17" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M5.88 1.7 C4.26 1.7 4.4 3.32 4.4 4.4 C4.4 5.88 3.72 6.96 1.97 7.5 C3.72 8.04 4.4 9.12 4.4 10.61 C4.4 11.69 4.26 13.31 5.88 13.31" />
+                      <path d="M9.12 1.7 C10.74 1.7 10.6 3.32 10.6 4.4 C10.6 5.88 11.28 6.96 13.03 7.5 C11.28 8.04 10.6 9.12 10.6 10.61 C10.6 11.69 10.74 13.31 9.12 13.31" />
                     </svg>
                   </button>
+                  {#if row.direction === 'in'}
+                    {@const replaying = replayingId === row.id}
+                    {@const replayed = replayedId === row.id}
+                    <button
+                      class="icon-btn"
+                      type="button"
+                      use:tip={$translate(replayed ? 'history.replayed' : 'history.replay')}
+                      aria-label={$translate(replayed ? 'history.replayed' : 'history.replay')}
+                      disabled={replaying}
+                      onclick={() => askReplay(row)}
+                    >
+                      {#if replayed}
+                        <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                          <path d="M3.5 8 6.2 10.7 11.5 4.5" />
+                        </svg>
+                      {:else}
+                        <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                          <path d="M2.5 7.5a5 5 0 0 1 8.6-3.4" />
+                          <path d="M12.5 7.5a5 5 0 0 1-8.6 3.4" />
+                          <path d="M11.3 1.6v2.6H8.7" />
+                          <path d="M3.7 13.4v-2.6h2.6" />
+                        </svg>
+                      {/if}
+                    </button>
+                  {/if}
                 </div>
               </td>
             </tr>
@@ -295,4 +356,29 @@
       if (sent) void load(params.connectionId, params.direction, params.type, params.status, params.page);
     }}
   />
+{/if}
+
+{#if replayTarget}
+  <div class="backdrop" role="presentation">
+    <div
+      class="dialog narrow"
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="replay-title"
+      aria-describedby="replay-text"
+    >
+      <h2 id="replay-title">{$translate('history.replayConfirmTitle')}</h2>
+      <div class="stack">
+        <p id="replay-text" class="muted">{$translate('history.replayConfirm')}</p>
+        <div class="row end">
+          <button class="btn ghost" type="button" onclick={() => (replayTarget = null)}>
+            {$translate('common.cancel')}
+          </button>
+          <button class="btn primary" type="button" onclick={() => void confirmReplay()}>
+            {$translate('history.replay')}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
 {/if}

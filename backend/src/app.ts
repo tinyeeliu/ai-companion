@@ -176,6 +176,20 @@ export function createApp(options: AppOptions): Hono {
     return c.json(sent);
   });
 
+  // Not connection-scoped: both ids travel in the body.
+  app.post('/api/v1/im/replay', async (c) => {
+    const body = await readJson(c);
+    const connectionId = typeof body.connectionId === 'string' ? body.connectionId.trim() : '';
+    if (connectionId === '') {
+      throw new HttpError(400, 'INVALID_PARAM', 'connectionId is required');
+    }
+    const messageId = Number(body.messageId);
+    if (!Number.isInteger(messageId) || messageId < 1) {
+      throw new HttpError(400, 'INVALID_PARAM', 'messageId must be a positive integer');
+    }
+    return c.json({ ok: true, ...manager.replayMessage(connectionId, messageId) });
+  });
+
   app.put('/api/v1/im/connection/:id/webhook', async (c) => {
     const body = await readJson(c);
     const raw = body.url;

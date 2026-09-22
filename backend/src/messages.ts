@@ -410,6 +410,22 @@ export class MessageStore {
   }
 
   /**
+   * One row read back for redelivery at any status, with revived wire payloads.
+   * `get` keeps the stored JSON for the public REST shape, and `nextPending` only
+   * sees `pending` rows, so neither can back a replay of an already-`sent` row.
+   */
+  getQueued(connectionId: string, id: number): QueuedMessage | undefined {
+    const row = this.db
+      .query(
+        `SELECT ${SELECT_COLUMNS}
+           FROM "ChatMessage"
+          WHERE connection_id = ? AND id = ?`,
+      )
+      .get(connectionId, id) as ChatMessageRow | null;
+    return row == null ? undefined : toQueued(row);
+  }
+
+  /**
    * Oldest still-queued row for one direction. Ordering by `id` (insert order)
    * is what makes the worker serial: it is the row that must go out first.
    */

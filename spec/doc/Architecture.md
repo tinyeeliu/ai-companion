@@ -111,6 +111,7 @@ are not messages and still run inline.
 | POST | `/api/v1/im/connection/:id/message` |
 | GET | `/api/v1/im/connection/:id/messages` |
 | GET | `/api/v1/im/connection/:id/messages/:messageId` |
+| POST | `/api/v1/im/replay` |
 | PUT | `/api/v1/im/connection/:id` |
 | PUT | `/api/v1/im/connection/:id/webhook` |
 | PUT | `/api/v1/im/connection/:id/cloud` |
@@ -132,6 +133,8 @@ Each connection stores `cloudUrl` / `cloudToken` on the same index as `webhookUr
 `POST /message` body: `{ "to": "…", "text": "…" }`. The send is queued and answered immediately as `{ "id": "<messageId>", "to": "…", "status": "pending" }` — it does not wait for the phone, so it no longer answers 409 when the session is offline.
 
 WhatsApp `to` is digits with country code. LINE `to` is a mid (for example `u…`) and is not stripped.
+
+`POST /replay` is a debug helper for the cloud pipe and is deliberately not connection-scoped: both ids travel in the body as `{ "connectionId": "…", "messageId": 1 }`. It re-frames a received row's stored payload exactly as the worker forwarded it the first time (`messages.upsert` for WhatsApp, `message` for LINE) and writes it straight onto the open cloud link. It is **not** a retry: nothing is re-queued and the row's `status`, `error_count` and `last_error` are untouched, so the cloud simply receives the same event again. Only `direction: "in"` rows can be replayed, and it answers `{ "ok": true, "messageId": "…", "name": "messages.upsert", "userId": "…" }`. Errors: `400 INVALID_PARAM` (missing `connectionId`, or a `messageId` that is not a positive integer), `404 NOT_FOUND` (unknown connection or message), `409 INVALID_STATE` (the row is outbound, or it has no stored payload), `409 NOT_CONNECTED` (the cloud link is not open).
 
 Connection views expose `phone` as the account id (WhatsApp number or LINE mid) and `user` as the display name when the channel provides one.
 

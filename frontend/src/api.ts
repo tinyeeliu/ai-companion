@@ -218,3 +218,17 @@ export function listMessages(
 export function getMessage(id: string, messageId: number): Promise<{ message: ChatMessageDetail }> {
   return request(`/api/v1/im/connection/${encodeURIComponent(id)}/messages/${messageId}`);
 }
+
+/**
+ * Debug helper: re-forward a received message's stored payload to the cloud.
+ * The row is not re-queued and its status does not change.
+ */
+export function replayMessage(
+  id: string,
+  messageId: number,
+): Promise<{ ok: true; messageId: string | null; name: string; userId: string }> {
+  return request('/api/v1/im/replay', {
+    method: 'POST',
+    body: JSON.stringify({ connectionId: id, messageId }),
+  });
+}

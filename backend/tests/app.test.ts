@@ -289,6 +289,85 @@ describe('REST /api/v1/im', () => {
     expect((await app.request('/api/v1/im/connection/home/messages?direction=all&status=failed&type=text', { headers })).status).toBe(200);
   });
 
+  test('replay validates the body before it looks anything up', async () => {
+    const { app } = appWith(new Map());
+    const headers = authHeaders();
+    await app.request('/api/v1/im/connection', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ id: 'home' }),
+    });
+    // Both ids travel in the body, so a missing one is a 400 rather than a 404.
+    const replay = (body: unknown) =>
+      app.request('/api/v1/im/replay', { method: 'POST', headers, body: JSON.stringify(body) });
+
+    expect((await replay({ messageId: 1 })).status).toBe(400);
+    expect((await replay({ connectionId: '   ', messageId: 1 })).status).toBe(400);
+    expect((await replay({ connectionId: 5, messageId: 1 })).status).toBe(400);
+    expect((await replay({ connectionId: 'home', messageId: 'abc' })).status).toBe(400);
+    expect((await replay({ connectionId: 'home', messageId: 0 })).status).toBe(400);
+    expect((await replay({ connectionId: 'home', messageId: 1.5 })).status).toBe(400);
+
+    // Shape is fine, the connection is not.
+    const missingConnection = await replay({ connectionId: 'missing', messageId: 1 });
+    expect(missingConnection.status).toBe(404);
+    expect((await missingConnection.json()).error).toBe('NOT_FOUND');
+
+    // Connection is fine, the row is not.
+    const missingMessage = await replay({ connectionId: 'home', messageId: 999 });
+    expect(missingMessage.status).toBe(404);
+    expect((await missingMessage.json()).error).toBe('NOT_FOUND');
+  });
+
+  test('replay refuses an outbound row and a connection without a cloud link', async () => {
+    const { app, manager } = appWith(new Map());
+    const headers = authHeaders();
+    await app.request('/api/v1/im/connection', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ id: 'home' }),
+    });
+    const base = {
+      connectionId: 'home',
+      channel: 'whatsapp' as const,
+      type: 'text',
+      fromId: '6591111111',
+      toId: '6592222222',
+      summary: 'hello',
+      timestamp: Date.now(),
+      status: 'sent' as const,
+      rawIn: { key: { id: 'wamid.1' }, message: { conversation: 'hello' } },
+    };
+    const inboundId = manager.messages.insert({
+      ...base,
+      direction: 'in',
+      messageId: 'wamid.1',
+      providerId: 'wamid.1',
+    });
+    const outboundId = manager.messages.insert({
+      ...base,
+      direction: 'out',
+      messageId: 'wamid.2',
+      providerId: 'wamid.2',
+    });
+    const replay = (messageId: number) =>
+      app.request('/api/v1/im/replay', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ connectionId: 'home', messageId }),
+      });
+
+    // Received, but this connection has no open cloud link.
+    const noLink = await replay(inboundId);
+    expect(noLink.status).toBe(409);
+    expect((await noLink.json()).error).toBe('NOT_CONNECTED');
+
+    // Outbound rows go to the phone, never to the cloud.
+    const wrongWay = await replay(outboundId);
+    expect(wrongWay.status).toBe(409);
+    expect((await wrongWay.json()).error).toBe('INVALID_STATE');
+  });
+
   test('a send is queued while the phone is offline and delivers on connect', async () => {
     const sessions = new Map<string, FakeSession>();
     const { app, manager } = appWith(sessions);

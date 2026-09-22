@@ -21,7 +21,7 @@ import {
 import { MessageStore, reviveStoredBinary, type QueuedMessage } from '../src/messages';
 import { ConnectionManager } from '../src/manager';
 import { ConnectionStore } from '../src/store';
-import { QUEUE_MAX_AGE_MS } from '../src/types';
+import { QUEUE_MAX_AGE_MS, HttpError } from '../src/types';
 import { fakeLineFactory } from './fake-line';
 import { fakeFactory, FakeSession } from './fake-whatsapp';
 
@@ -677,6 +677,101 @@ describe('end to end through the manager', () => {
       await manager.send('wa-1', '6592222222', 'local reply');
       expect(manager.view('wa-1').outgoingCount).toBe(2);
       expect(messages.list('wa-1', { direction: 'out' }, 1, 10).total).toBe(2);
+    } finally {
+      server.stop(true);
+    }
+  }, 20_000);
+
+  test('replay re-frames a received message without touching the row', async () => {
+    const received: Array<{ type: string; name?: string; data?: unknown }> = [];
+    const server = Bun.serve({
+      port: 0,
+      fetch(req, srv) {
+        if (srv.upgrade(req)) return undefined;
+        return new Response('no', { status: 400 });
+      },
+      websocket: {
+        open(ws) {
+          ws.send(JSON.stringify({ v: 1, type: 'hello', data: { ok: true } }));
+        },
+        message(_ws, raw) {
+          received.push(JSON.parse(String(raw)) as { type: string; name?: string; data?: unknown });
+        },
+      },
+    });
+
+    try {
+      const root = tempDir();
+      const messages = new MessageStore(join(root, 'messages.sqlite'));
+      const sessions = new Map<string, FakeSession>();
+      const manager = new ConnectionManager(
+        new ConnectionStore(root),
+        fakeFactory(sessions),
+        fetch,
+        fakeLineFactory(new Map()),
+        messages,
+      );
+      manager.store.add('wa-1', null, 'Home', 'whatsapp');
+      await manager.enable('wa-1');
+      await manager.setCloud('wa-1', `ws://127.0.0.1:${server.port}/`, 'tok');
+      await until(() => manager.view('wa-1').cloudStatus === 'connected');
+
+      // The state a real forward leaves behind: already `sent`, not queued.
+      const rawIn = { key: { id: 'wamid.replay' }, message: { conversation: 'replay me' } };
+      const id = messages.insert({
+        connectionId: 'wa-1',
+        channel: 'whatsapp',
+        direction: 'in',
+        messageId: 'wamid.replay',
+        providerId: 'wamid.replay',
+        type: 'text',
+        fromId: '6591111111',
+        toId: '6592222222',
+        summary: 'replay me',
+        timestamp: Date.now(),
+        status: 'sent',
+        rawIn,
+      });
+
+      const ack = manager.replayMessage('wa-1', id);
+      expect(ack.name).toBe('messages.upsert');
+      expect(ack.userId).toBe('6591111111');
+      expect(ack.messageId).toBe('wamid.replay');
+
+      await until(() => received.some((frame) => frame.type === 'event' && frame.name === 'messages.upsert'));
+      const event = received.find((frame) => frame.type === 'event' && frame.name === 'messages.upsert');
+      // The identical frame the worker would have sent, `userId` included.
+      expect(event?.data).toEqual({ messages: [rawIn], type: 'notify' });
+
+      // Replay is not a retry: the stored row is untouched.
+      const after = messages.get('wa-1', id)!;
+      expect(after.status).toBe('sent');
+      expect(after.errorCount).toBe(0);
+      expect(after.lastError).toBeNull();
+
+      // Outbound rows are delivered to the phone, so they are not replayable.
+      const outId = messages.insert({
+        connectionId: 'wa-1',
+        channel: 'whatsapp',
+        direction: 'out',
+        messageId: 'wamid.out',
+        type: 'text',
+        fromId: '6591111111',
+        toId: '6592222222',
+        summary: 'out',
+        timestamp: Date.now(),
+        status: 'sent',
+        rawOut: { kind: 'sendText', to: '6592222222', text: 'out' },
+      });
+      let thrown: unknown;
+      try {
+        manager.replayMessage('wa-1', outId);
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown).toBeInstanceOf(HttpError);
+      expect((thrown as HttpError).status).toBe(409);
+      expect((thrown as HttpError).code).toBe('INVALID_STATE');
     } finally {
       server.stop(true);
     }

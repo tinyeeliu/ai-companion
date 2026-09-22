@@ -23,6 +23,7 @@ import { CloudLink } from './cloud/link';
 import {
   CloudEventTransport,
   DeviceSendTransport,
+  eventFor,
   MessageQueue,
   type OutboundPayload,
 } from './cloud/queue';
@@ -352,6 +353,36 @@ export class ConnectionManager {
     const message = this.messages.get(id, messageId);
     if (message == null) throw new HttpError(404, 'NOT_FOUND', `Message ${messageId} not found`);
     return message;
+  }
+
+  /**
+   * Debug-only: re-frames a stored received message exactly as it was forwarded
+   * the first time, straight onto the open link. The row's status, error_count
+   * and last_error are untouched, so this is not a retry — the cloud simply
+   * receives the same event again.
+   */
+  replayMessage(
+    id: string,
+    messageId: number,
+  ): { messageId: string | null; name: string; userId: string } {
+    this.store.require(id);
+    const row = this.messages.getQueued(id, messageId);
+    if (row == null) throw new HttpError(404, 'NOT_FOUND', `Message ${messageId} not found`);
+    if (row.direction !== 'in') {
+      throw new HttpError(409, 'INVALID_STATE', 'Only received messages are forwarded to the cloud');
+    }
+    if (row.rawIn == null) {
+      throw new HttpError(409, 'INVALID_STATE', 'This message has no stored payload to replay');
+    }
+    const link = this.clouds.get(id);
+    if (link == null || !link.isOpen()) {
+      throw new HttpError(409, 'NOT_CONNECTED', `Connection ${id} has no open cloud link`);
+    }
+    const { name, data } = eventFor(row.channel, row);
+    if (!link.sendEvent(name, data, row.from)) {
+      throw new HttpError(409, 'NOT_CONNECTED', `Connection ${id} has no open cloud link`);
+    }
+    return { messageId: row.messageId, name, userId: row.from };
   }
 
   private factoryFor(channel: Channel): ChannelFactory {

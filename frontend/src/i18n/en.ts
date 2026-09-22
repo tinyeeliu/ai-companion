@@ -145,6 +145,11 @@ const en: Dict = {
   'history.failed': 'Failed',
   'history.view': 'View',
   'history.reply': 'Reply',
+  'history.replay': 'Replay',
+  'history.replayed': 'Replayed',
+  'history.replayConfirmTitle': 'Replay message',
+  'history.replayConfirm':
+    'Replay this message to the cloud again? The cloud receives it as a new message. This row stays as it is.',
   'history.replyContext': 'In reply to: {summary}',
   'history.empty': 'No messages in the last 7 days.',
   'history.emptyFiltered': 'No messages match these filters.',
