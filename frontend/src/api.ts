@@ -1,3 +1,5 @@
+import { t } from './i18n';
+
 export type Channel = 'whatsapp' | 'line';
 
 export interface Connection {
@@ -45,7 +47,7 @@ export async function bootstrap(): Promise<Health> {
 
 export async function fetchHealth(): Promise<Health> {
   const res = await fetch('/api/v1/im/health');
-  if (!res.ok) throw new Error(`Health failed (${res.status})`);
+  if (!res.ok) throw new Error(t('error.health', { status: res.status }));
   return (await res.json()) as Health;
 }
 
@@ -58,7 +60,9 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(path, { ...init, headers });
   const body = (await res.json().catch(() => ({}))) as { message?: string };
   if (!res.ok) {
-    throw new Error(typeof body.message === 'string' ? body.message : `HTTP ${res.status}`);
+    throw new Error(
+      typeof body.message === 'string' ? body.message : t('error.http', { status: res.status }),
+    );
   }
   return body as T;
 }

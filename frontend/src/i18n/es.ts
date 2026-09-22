@@ -18,7 +18,7 @@ const es: Dict = {
   'table.channel': 'Canal',
   'table.account': 'Cuenta',
   'table.user': 'Usuario',
-  'table.status': 'Estado',
+  'table.status': 'WhatsApp',
   'table.statusHint': 'Conexión de WhatsApp (Baileys) en este equipo',
   'table.cloud': 'Nube',
   'table.cloudHint': 'Enlace WebSocket con el servidor',
@@ -82,7 +82,7 @@ const es: Dict = {
   'detail.lineUserPlaceholder': 'u…',
   'detail.message': 'Mensaje',
   'detail.messagePlaceholder': 'Escribe un mensaje',
-  'detail.forwardTitle': 'Reenviar mensajes entrantes',
+  'detail.forwardTitle': 'Webhook HTTP',
   'detail.forwardHint': 'Opcional. Cada mensaje nuevo se envía a esta URL.',
   'detail.url': 'URL',
   'detail.scanHint': 'Escanea este código en WhatsApp para terminar de vincular.',
@@ -91,7 +91,7 @@ const es: Dict = {
   'detail.forwardSaved': 'Reenvío guardado',
   'detail.forwardOff': 'Reenvío desactivado',
   'detail.cloudTitle': 'WebSocket en la nube',
-  'detail.cloudHint': 'Envía los mensajes recibidos a tu servidor por WebSocket.',
+  'detail.cloudHint': 'Opcional. Este ordenador marca la URL para que un servidor en la nube pueda enviar y recibir por esta conexión. El portátil no necesita un puerto público.',
   'detail.cloudUrl': 'URL de WebSocket',
   'detail.cloudToken': 'Token de autenticación',
   'detail.cloudTokenPlaceholder': 'Token Bearer del servidor',
@@ -151,6 +151,19 @@ const es: Dict = {
   'history.rawOut': 'JSON de salida',
   'history.openReceived': 'Mensajes recibidos de {name}',
   'history.openSent': 'Mensajes enviados de {name}',
+
+  'msgtype.text': 'Texto',
+  'msgtype.image': 'Imagen',
+  'msgtype.audio': 'Audio',
+  'msgtype.video': 'Vídeo',
+  'msgtype.document': 'Documento',
+  'msgtype.sticker': 'Sticker',
+  'msgtype.location': 'Ubicación',
+  'msgtype.contact': 'Contacto',
+  'msgtype.unknown': 'Desconocido',
+
+  'error.health': 'No se puede acceder al backend (HTTP {status})',
+  'error.http': 'La solicitud falló (HTTP {status})',
 };
 
 export default es;

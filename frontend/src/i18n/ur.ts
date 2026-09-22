@@ -18,7 +18,7 @@ const ur: Dict = {
   'table.channel': 'چینل',
   'table.account': 'اکاؤنٹ',
   'table.user': 'صارف',
-  'table.status': 'حالت',
+  'table.status': 'WhatsApp',
   'table.statusHint': 'اس کمپیوٹر پر WhatsApp (Baileys) کنکشن',
   'table.cloud': 'کلاؤڈ',
   'table.cloudHint': 'سرور کے ساتھ کلاؤڈ WebSocket کنکشن',
@@ -82,7 +82,7 @@ const ur: Dict = {
   'detail.lineUserPlaceholder': 'u…',
   'detail.message': 'پیغام',
   'detail.messagePlaceholder': 'پیغام لکھیں',
-  'detail.forwardTitle': 'آنے والے پیغامات فارورڈ کریں',
+  'detail.forwardTitle': 'HTTP Webhook',
   'detail.forwardHint': 'اختیاری۔ ہر نیا پیغام اس URL پر بھیجا جاتا ہے۔',
   'detail.url': 'URL',
   'detail.scanHint': 'لنک مکمل کرنے کے لیے WhatsApp میں یہ کوڈ اسکین کریں۔',
@@ -91,7 +91,7 @@ const ur: Dict = {
   'detail.forwardSaved': 'فارورڈنگ محفوظ ہو گئی',
   'detail.forwardOff': 'فارورڈنگ بند کر دی گئی',
   'detail.cloudTitle': 'کلاؤڈ WebSocket',
-  'detail.cloudHint': 'موصول پیغامات WebSocket کے ذریعے اپنے سرور کو بھیجیں۔',
+  'detail.cloudHint': 'اختیاری۔ یہ کمپیوٹر URL پر کنیکٹ ہوتا ہے تاکہ کلاؤڈ سرور اس کنکشن پر بھیج اور وصول کر سکے۔ لیپ ٹاپ کو عوامی پورٹ کی ضرورت نہیں۔',
   'detail.cloudUrl': 'WebSocket URL',
   'detail.cloudToken': 'تصدیقی ٹوکن',
   'detail.cloudTokenPlaceholder': 'سرور سے ملا Bearer ٹوکن',
@@ -151,6 +151,19 @@ const ur: Dict = {
   'history.rawOut': 'JSON آؤٹ پٹ',
   'history.openReceived': '{name} کے موصولہ پیغامات',
   'history.openSent': '{name} کے بھیجے گئے پیغامات',
+
+  'msgtype.text': 'متن',
+  'msgtype.image': 'تصویر',
+  'msgtype.audio': 'آڈیو',
+  'msgtype.video': 'ویڈیو',
+  'msgtype.document': 'دستاویز',
+  'msgtype.sticker': 'اسٹیکر',
+  'msgtype.location': 'مقام',
+  'msgtype.contact': 'رابطہ',
+  'msgtype.unknown': 'نامعلوم',
+
+  'error.health': 'بیک اینڈ تک رسائی نہیں (HTTP {status})',
+  'error.http': 'درخواست ناکام (HTTP {status})',
 };
 
 export default ur;

@@ -18,7 +18,7 @@ const de: Dict = {
   'table.channel': 'Kanal',
   'table.account': 'Konto',
   'table.user': 'Nutzer',
-  'table.status': 'Status',
+  'table.status': 'WhatsApp',
   'table.statusHint': 'WhatsApp-Verbindung (Baileys) auf diesem Computer',
   'table.cloud': 'Cloud',
   'table.cloudHint': 'Cloud-WebSocket-Verbindung zum Server',
@@ -83,7 +83,7 @@ const de: Dict = {
   'detail.lineUserPlaceholder': 'u…',
   'detail.message': 'Nachricht',
   'detail.messagePlaceholder': 'Nachricht schreiben',
-  'detail.forwardTitle': 'Eingehende Nachrichten weiterleiten',
+  'detail.forwardTitle': 'HTTP-Webhook',
   'detail.forwardHint': 'Optional. Jede neue Nachricht wird an diese URL gesendet.',
   'detail.url': 'URL',
   'detail.scanHint': 'Scanne diesen Code in WhatsApp, um die Verknüpfung abzuschließen.',
@@ -92,7 +92,7 @@ const de: Dict = {
   'detail.forwardSaved': 'Weiterleitung gespeichert',
   'detail.forwardOff': 'Weiterleitung deaktiviert',
   'detail.cloudTitle': 'Cloud-WebSocket',
-  'detail.cloudHint': 'Eingehende Nachrichten per WebSocket an deinen Server senden.',
+  'detail.cloudHint': 'Optional. Dieser Computer wählt die URL, damit ein Cloud-Server über diese Verbindung senden und empfangen kann. Der Laptop benötigt keinen öffentlichen Port.',
   'detail.cloudUrl': 'WebSocket-URL',
   'detail.cloudToken': 'Auth-Token',
   'detail.cloudTokenPlaceholder': 'Bearer-Token vom Server',
@@ -152,6 +152,19 @@ const de: Dict = {
   'history.rawOut': 'JSON-Ausgabe',
   'history.openReceived': 'Empfangene Nachrichten für {name}',
   'history.openSent': 'Gesendete Nachrichten für {name}',
+
+  'msgtype.text': 'Text',
+  'msgtype.image': 'Bild',
+  'msgtype.audio': 'Audio',
+  'msgtype.video': 'Video',
+  'msgtype.document': 'Dokument',
+  'msgtype.sticker': 'Sticker',
+  'msgtype.location': 'Standort',
+  'msgtype.contact': 'Kontakt',
+  'msgtype.unknown': 'Unbekannt',
+
+  'error.health': 'Backend nicht erreichbar (HTTP {status})',
+  'error.http': 'Anfrage fehlgeschlagen (HTTP {status})',
 };
 
 export default de;

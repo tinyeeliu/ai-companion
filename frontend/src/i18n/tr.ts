@@ -18,7 +18,7 @@ const tr: Dict = {
   'table.channel': 'Kanal',
   'table.account': 'Hesap',
   'table.user': 'Kullanıcı',
-  'table.status': 'Durum',
+  'table.status': 'WhatsApp',
   'table.statusHint': 'Bu bilgisayardaki WhatsApp (Baileys) bağlantısı',
   'table.cloud': 'Bulut',
   'table.cloudHint': 'Sunucuyla bulut WebSocket bağlantısı',
@@ -82,7 +82,7 @@ const tr: Dict = {
   'detail.lineUserPlaceholder': 'u…',
   'detail.message': 'Mesaj',
   'detail.messagePlaceholder': 'Bir mesaj yazın',
-  'detail.forwardTitle': 'Gelen mesajları ilet',
+  'detail.forwardTitle': 'HTTP Webhook',
   'detail.forwardHint': 'İsteğe bağlı. Her yeni mesaj bu URL’ye gönderilir.',
   'detail.url': 'URL',
   'detail.scanHint': 'Bağlantıyı tamamlamak için bu kodu WhatsApp’ta tarayın.',
@@ -91,7 +91,7 @@ const tr: Dict = {
   'detail.forwardSaved': 'İletme kaydedildi',
   'detail.forwardOff': 'İletme kapatıldı',
   'detail.cloudTitle': 'Bulut WebSocket',
-  'detail.cloudHint': 'Gelen mesajları WebSocket ile sunucunuza gönderin.',
+  'detail.cloudHint': 'İsteğe bağlı. Bu bilgisayar URL’ye bağlanır; böylece bir bulut sunucusu bu bağlantı üzerinden gönderip alabilir. Dizüstü bilgisayarın genel bir bağlantı noktasına ihtiyacı yoktur.',
   'detail.cloudUrl': 'WebSocket adresi',
   'detail.cloudToken': 'Kimlik doğrulama jetonu',
   'detail.cloudTokenPlaceholder': 'Sunucudan gelen Bearer jetonu',
@@ -151,6 +151,19 @@ const tr: Dict = {
   'history.rawOut': 'JSON çıktı',
   'history.openReceived': '{name} gelen iletileri',
   'history.openSent': '{name} giden iletileri',
+
+  'msgtype.text': 'Metin',
+  'msgtype.image': 'Görsel',
+  'msgtype.audio': 'Ses',
+  'msgtype.video': 'Video',
+  'msgtype.document': 'Belge',
+  'msgtype.sticker': 'Çıkartma',
+  'msgtype.location': 'Konum',
+  'msgtype.contact': 'Kişi',
+  'msgtype.unknown': 'Bilinmiyor',
+
+  'error.health': 'Arka uca ulaşılamıyor (HTTP {status})',
+  'error.http': 'İstek başarısız (HTTP {status})',
 };
 
 export default tr;

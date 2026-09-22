@@ -18,7 +18,7 @@ const pt: Dict = {
   'table.channel': 'Canal',
   'table.account': 'Conta',
   'table.user': 'Usuário',
-  'table.status': 'Status',
+  'table.status': 'WhatsApp',
   'table.statusHint': 'Conexão do WhatsApp (Baileys) neste computador',
   'table.cloud': 'Nuvem',
   'table.cloudHint': 'Ligação WebSocket com o servidor',
@@ -82,7 +82,7 @@ const pt: Dict = {
   'detail.lineUserPlaceholder': 'u…',
   'detail.message': 'Mensagem',
   'detail.messagePlaceholder': 'Escreva uma mensagem',
-  'detail.forwardTitle': 'Encaminhar mensagens recebidas',
+  'detail.forwardTitle': 'Webhook HTTP',
   'detail.forwardHint': 'Opcional. Cada nova mensagem é enviada para esta URL.',
   'detail.url': 'URL',
   'detail.scanHint': 'Escaneie este código no WhatsApp para concluir a vinculação.',
@@ -91,7 +91,7 @@ const pt: Dict = {
   'detail.forwardSaved': 'Encaminhamento salvo',
   'detail.forwardOff': 'Encaminhamento desativado',
   'detail.cloudTitle': 'WebSocket na nuvem',
-  'detail.cloudHint': 'Envie as mensagens recebidas para o seu servidor via WebSocket.',
+  'detail.cloudHint': 'Opcional. Este computador disca a URL para que um servidor na nuvem possa enviar e receber nesta conexão. O portátil não precisa de uma porta pública.',
   'detail.cloudUrl': 'URL do WebSocket',
   'detail.cloudToken': 'Token de autenticação',
   'detail.cloudTokenPlaceholder': 'Token Bearer do servidor',
@@ -151,6 +151,19 @@ const pt: Dict = {
   'history.rawOut': 'JSON de saída',
   'history.openReceived': 'Mensagens recebidas de {name}',
   'history.openSent': 'Mensagens enviadas de {name}',
+
+  'msgtype.text': 'Texto',
+  'msgtype.image': 'Imagem',
+  'msgtype.audio': 'Áudio',
+  'msgtype.video': 'Vídeo',
+  'msgtype.document': 'Documento',
+  'msgtype.sticker': 'Sticker',
+  'msgtype.location': 'Localização',
+  'msgtype.contact': 'Contacto',
+  'msgtype.unknown': 'Desconhecido',
+
+  'error.health': 'Não foi possível contactar o backend (HTTP {status})',
+  'error.http': 'O pedido falhou (HTTP {status})',
 };
 
 export default pt;

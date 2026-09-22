@@ -18,7 +18,7 @@ const hi: Dict = {
   'table.channel': 'चैनल',
   'table.account': 'खाता',
   'table.user': 'उपयोगकर्ता',
-  'table.status': 'स्थिति',
+  'table.status': 'WhatsApp',
   'table.statusHint': 'इस कंप्यूटर पर WhatsApp (Baileys) कनेक्शन',
   'table.cloud': 'क्लाउड',
   'table.cloudHint': 'सर्वर से क्लाउड WebSocket कनेक्शन',
@@ -82,7 +82,7 @@ const hi: Dict = {
   'detail.lineUserPlaceholder': 'u…',
   'detail.message': 'संदेश',
   'detail.messagePlaceholder': 'संदेश लिखें',
-  'detail.forwardTitle': 'आने वाले संदेश अग्रेषित करें',
+  'detail.forwardTitle': 'HTTP Webhook',
   'detail.forwardHint': 'वैकल्पिक। हर नया संदेश इस URL पर भेजा जाता है।',
   'detail.url': 'URL',
   'detail.scanHint': 'जोड़ना पूरा करने के लिए WhatsApp में यह कोड स्कैन करें।',
@@ -91,7 +91,7 @@ const hi: Dict = {
   'detail.forwardSaved': 'अग्रेषण सहेजा गया',
   'detail.forwardOff': 'अग्रेषण बंद',
   'detail.cloudTitle': 'क्लाउड WebSocket',
-  'detail.cloudHint': 'WebSocket से आने वाले संदेश अपने सर्वर पर भेजें।',
+  'detail.cloudHint': 'वैकल्पिक। यह कंप्यूटर URL पर कनेक्ट होता है ताकि क्लाउड सर्वर इस कनेक्शन पर भेज और प्राप्त कर सके। लैपटॉप को सार्वजनिक पोर्ट की आवश्यकता नहीं है।',
   'detail.cloudUrl': 'WebSocket URL',
   'detail.cloudToken': 'प्रमाणीकरण टोकन',
   'detail.cloudTokenPlaceholder': 'सर्वर से मिला Bearer टोकन',
@@ -151,6 +151,19 @@ const hi: Dict = {
   'history.rawOut': 'JSON आउटपुट',
   'history.openReceived': '{name} के प्राप्त संदेश',
   'history.openSent': '{name} के भेजे गए संदेश',
+
+  'msgtype.text': 'टेक्स्ट',
+  'msgtype.image': 'छवि',
+  'msgtype.audio': 'ऑडियो',
+  'msgtype.video': 'वीडियो',
+  'msgtype.document': 'दस्तावेज़',
+  'msgtype.sticker': 'स्टिकर',
+  'msgtype.location': 'स्थान',
+  'msgtype.contact': 'संपर्क',
+  'msgtype.unknown': 'अज्ञात',
+
+  'error.health': 'बैकएंड से संपर्क नहीं हो पा रहा (HTTP {status})',
+  'error.http': 'अनुरोध विफल (HTTP {status})',
 };
 
 export default hi;

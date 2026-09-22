@@ -18,7 +18,7 @@ const it: Dict = {
   'table.channel': 'Canale',
   'table.account': 'Account',
   'table.user': 'Utente',
-  'table.status': 'Stato',
+  'table.status': 'WhatsApp',
   'table.statusHint': 'Connessione WhatsApp (Baileys) su questo computer',
   'table.cloud': 'Cloud',
   'table.cloudHint': 'Collegamento WebSocket con il server',
@@ -82,7 +82,7 @@ const it: Dict = {
   'detail.lineUserPlaceholder': 'u…',
   'detail.message': 'Messaggio',
   'detail.messagePlaceholder': 'Scrivi un messaggio',
-  'detail.forwardTitle': 'Inoltra i messaggi in arrivo',
+  'detail.forwardTitle': 'Webhook HTTP',
   'detail.forwardHint': 'Facoltativo. Ogni nuovo messaggio viene inviato a questo URL.',
   'detail.url': 'URL',
   'detail.scanHint': 'Scansiona questo codice in WhatsApp per completare il collegamento.',
@@ -91,7 +91,7 @@ const it: Dict = {
   'detail.forwardSaved': 'Inoltro salvato',
   'detail.forwardOff': 'Inoltro disattivato',
   'detail.cloudTitle': 'WebSocket cloud',
-  'detail.cloudHint': 'Invia i messaggi ricevuti al tuo server via WebSocket.',
+  'detail.cloudHint': 'Facoltativo. Questo computer contatta l’URL così un server cloud può inviare e ricevere su questa connessione. Il computer non ha bisogno di una porta pubblica.',
   'detail.cloudUrl': 'URL WebSocket',
   'detail.cloudToken': 'Token di autenticazione',
   'detail.cloudTokenPlaceholder': 'Token Bearer dal server',
@@ -151,6 +151,19 @@ const it: Dict = {
   'history.rawOut': 'JSON in uscita',
   'history.openReceived': 'Messaggi ricevuti di {name}',
   'history.openSent': 'Messaggi inviati di {name}',
+
+  'msgtype.text': 'Testo',
+  'msgtype.image': 'Immagine',
+  'msgtype.audio': 'Audio',
+  'msgtype.video': 'Video',
+  'msgtype.document': 'Documento',
+  'msgtype.sticker': 'Sticker',
+  'msgtype.location': 'Posizione',
+  'msgtype.contact': 'Contatto',
+  'msgtype.unknown': 'Sconosciuto',
+
+  'error.health': 'Backend non raggiungibile (HTTP {status})',
+  'error.http': 'Richiesta non riuscita (HTTP {status})',
 };
 
 export default it;

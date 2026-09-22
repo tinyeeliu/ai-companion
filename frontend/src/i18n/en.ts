@@ -157,6 +157,19 @@ const en: Dict = {
   'history.rawOut': 'JSON output',
   'history.openReceived': 'Received messages for {name}',
   'history.openSent': 'Sent messages for {name}',
+
+  'msgtype.text': 'Text',
+  'msgtype.image': 'Image',
+  'msgtype.audio': 'Audio',
+  'msgtype.video': 'Video',
+  'msgtype.document': 'Document',
+  'msgtype.sticker': 'Sticker',
+  'msgtype.location': 'Location',
+  'msgtype.contact': 'Contact',
+  'msgtype.unknown': 'Unknown',
+
+  'error.health': 'Backend unreachable (HTTP {status})',
+  'error.http': 'Request failed (HTTP {status})',
 };
 
 export default en;

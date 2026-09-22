@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { t, tr as translate } from './i18n';
-  import { formatTimestamp } from './status';
+  import { locale, t, tr as translate } from './i18n';
+  import { formatTimestamp, messageTypeLabel } from './status';
   import { tip } from './tooltip';
   import type { ChatMessageDetail } from './api';
 
@@ -88,7 +88,7 @@
     <div class="dialog-head">
       <div>
         <h2 id="msg-title">{$translate('history.detail')}</h2>
-        <p class="hint">{formatTimestamp(message.timestamp)} · {message.type}</p>
+        <p class="hint">{formatTimestamp(message.timestamp, $locale)} · {messageTypeLabel(message.type, $translate)}</p>
       </div>
       <button
         class="icon-btn"

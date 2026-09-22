@@ -18,7 +18,7 @@ const id: Dict = {
   'table.channel': 'Saluran',
   'table.account': 'Akun',
   'table.user': 'Pengguna',
-  'table.status': 'Status',
+  'table.status': 'WhatsApp',
   'table.statusHint': 'Koneksi WhatsApp (Baileys) di komputer ini',
   'table.cloud': 'Cloud',
   'table.cloudHint': 'Tautan WebSocket ke server',
@@ -82,7 +82,7 @@ const id: Dict = {
   'detail.lineUserPlaceholder': 'u…',
   'detail.message': 'Pesan',
   'detail.messagePlaceholder': 'Tulis pesan',
-  'detail.forwardTitle': 'Teruskan pesan masuk',
+  'detail.forwardTitle': 'Webhook HTTP',
   'detail.forwardHint': 'Opsional. Setiap pesan baru dikirim ke URL ini.',
   'detail.url': 'URL',
   'detail.scanHint': 'Pindai kode ini di WhatsApp untuk menyelesaikan penautan.',
@@ -91,7 +91,7 @@ const id: Dict = {
   'detail.forwardSaved': 'Penerusan disimpan',
   'detail.forwardOff': 'Penerusan dimatikan',
   'detail.cloudTitle': 'WebSocket cloud',
-  'detail.cloudHint': 'Kirim pesan masuk ke server Anda lewat WebSocket.',
+  'detail.cloudHint': 'Opsional. Komputer ini menghubungi URL agar server cloud dapat mengirim dan menerima melalui koneksi ini. Laptop tidak perlu port publik.',
   'detail.cloudUrl': 'URL WebSocket',
   'detail.cloudToken': 'Token autentikasi',
   'detail.cloudTokenPlaceholder': 'Token Bearer dari server',
@@ -151,6 +151,19 @@ const id: Dict = {
   'history.rawOut': 'JSON keluar',
   'history.openReceived': 'Pesan diterima untuk {name}',
   'history.openSent': 'Pesan terkirim untuk {name}',
+
+  'msgtype.text': 'Teks',
+  'msgtype.image': 'Gambar',
+  'msgtype.audio': 'Audio',
+  'msgtype.video': 'Video',
+  'msgtype.document': 'Dokumen',
+  'msgtype.sticker': 'Stiker',
+  'msgtype.location': 'Lokasi',
+  'msgtype.contact': 'Kontak',
+  'msgtype.unknown': 'Tidak dikenal',
+
+  'error.health': 'Backend tidak dapat dijangkau (HTTP {status})',
+  'error.http': 'Permintaan gagal (HTTP {status})',
 };
 
 export default id;

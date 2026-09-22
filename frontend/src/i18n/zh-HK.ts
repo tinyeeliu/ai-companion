@@ -17,7 +17,7 @@ const zhHK: Dict = {
   'table.channel': '渠道',
   'table.account': '帳戶',
   'table.user': '用戶',
-  'table.status': '狀態',
+  'table.status': 'WhatsApp',
   'table.statusHint': '這部電腦上的 WhatsApp（Baileys）連線',
   'table.cloud': '雲端',
   'table.cloudHint': '與伺服器的雲端 WebSocket 連線',
@@ -80,7 +80,7 @@ const zhHK: Dict = {
   'detail.lineUserPlaceholder': 'u…',
   'detail.message': '訊息',
   'detail.messagePlaceholder': '輸入訊息',
-  'detail.forwardTitle': '轉發收到的訊息',
+  'detail.forwardTitle': 'HTTP Webhook',
   'detail.forwardHint': '可選。每則新訊息都會傳送到這個網址。',
   'detail.url': '網址',
   'detail.scanHint': '在 WhatsApp 中掃描此二維碼完成連結。',
@@ -89,7 +89,7 @@ const zhHK: Dict = {
   'detail.forwardSaved': '轉發已儲存',
   'detail.forwardOff': '已關閉轉發',
   'detail.cloudTitle': '雲端 WebSocket',
-  'detail.cloudHint': '把收到的訊息經 WebSocket 連接到你的伺服器。',
+  'detail.cloudHint': '可選。這部電腦會主動連線該網址，讓雲端伺服器透過此連線收發訊息。筆記型電腦無需公開連接埠。',
   'detail.cloudUrl': 'WebSocket 網址',
   'detail.cloudToken': '鑑權令牌',
   'detail.cloudTokenPlaceholder': '伺服器提供的 Bearer 令牌',
@@ -149,6 +149,19 @@ const zhHK: Dict = {
   'history.rawOut': 'JSON 輸出',
   'history.openReceived': '{name} 的已接收訊息',
   'history.openSent': '{name} 的已發送訊息',
+
+  'msgtype.text': '文字',
+  'msgtype.image': '圖片',
+  'msgtype.audio': '語音',
+  'msgtype.video': '影片',
+  'msgtype.document': '文件',
+  'msgtype.sticker': '貼圖',
+  'msgtype.location': '位置',
+  'msgtype.contact': '聯絡人',
+  'msgtype.unknown': '未知',
+
+  'error.health': '無法連線後端（HTTP {status}）',
+  'error.http': '請求失敗（HTTP {status}）',
 };
 
 export default zhHK;

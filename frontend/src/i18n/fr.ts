@@ -18,7 +18,7 @@ const fr: Dict = {
   'table.channel': 'Canal',
   'table.account': 'Compte',
   'table.user': 'Utilisateur',
-  'table.status': 'Statut',
+  'table.status': 'WhatsApp',
   'table.statusHint': 'Connexion WhatsApp (Baileys) sur cet ordinateur',
   'table.cloud': 'Cloud',
   'table.cloudHint': 'Liaison WebSocket avec le serveur',
@@ -83,7 +83,7 @@ const fr: Dict = {
   'detail.lineUserPlaceholder': 'u…',
   'detail.message': 'Message',
   'detail.messagePlaceholder': 'Écrire un message',
-  'detail.forwardTitle': 'Transférer les messages entrants',
+  'detail.forwardTitle': 'Webhook HTTP',
   'detail.forwardHint': 'Facultatif. Chaque nouveau message est envoyé à cette URL.',
   'detail.url': 'URL',
   'detail.scanHint': "Scannez ce code dans WhatsApp pour terminer l'association.",
@@ -92,7 +92,7 @@ const fr: Dict = {
   'detail.forwardSaved': 'Transfert enregistré',
   'detail.forwardOff': 'Transfert désactivé',
   'detail.cloudTitle': 'WebSocket cloud',
-  'detail.cloudHint': 'Transmettez les messages reçus à votre serveur via WebSocket.',
+  'detail.cloudHint': "Facultatif. Cet ordinateur compose l'URL pour qu'un serveur cloud puisse envoyer et recevoir sur cette connexion. L'ordinateur n'a pas besoin de port public.",
   'detail.cloudUrl': 'URL WebSocket',
   'detail.cloudToken': "Jeton d'authentification",
   'detail.cloudTokenPlaceholder': 'Jeton Bearer fourni par le serveur',
@@ -152,6 +152,19 @@ const fr: Dict = {
   'history.rawOut': 'JSON de sortie',
   'history.openReceived': 'Messages reçus pour {name}',
   'history.openSent': 'Messages envoyés pour {name}',
+
+  'msgtype.text': 'Texte',
+  'msgtype.image': 'Image',
+  'msgtype.audio': 'Audio',
+  'msgtype.video': 'Vidéo',
+  'msgtype.document': 'Document',
+  'msgtype.sticker': 'Sticker',
+  'msgtype.location': 'Position',
+  'msgtype.contact': 'Contact',
+  'msgtype.unknown': 'Inconnu',
+
+  'error.health': 'Backend injoignable (HTTP {status})',
+  'error.http': 'Échec de la requête (HTTP {status})',
 };
 
 export default fr;

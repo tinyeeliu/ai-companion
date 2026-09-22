@@ -44,9 +44,38 @@ export function formatUptime(ms: number | undefined, tr: Translate): string {
   return `${seconds}${s}`;
 }
 
-export function formatTimestamp(ms: number | undefined): string {
+export function formatTimestamp(ms: number | undefined, locale?: string): string {
   if (ms == null || !Number.isFinite(ms) || ms <= 0) return '—';
-  return new Date(ms).toLocaleString();
+  return new Date(ms).toLocaleString(locale);
+}
+
+/**
+ * Human-readable label for a stored message type. Unknown values come straight
+ * from the backend, so they pass through unchanged rather than reading as blank.
+ */
+export function messageTypeLabel(type: string, tr: Translate): string {
+  switch (type) {
+    case 'text':
+      return tr('msgtype.text');
+    case 'image':
+      return tr('msgtype.image');
+    case 'audio':
+      return tr('msgtype.audio');
+    case 'video':
+      return tr('msgtype.video');
+    case 'document':
+      return tr('msgtype.document');
+    case 'sticker':
+      return tr('msgtype.sticker');
+    case 'location':
+      return tr('msgtype.location');
+    case 'contact':
+      return tr('msgtype.contact');
+    case 'unknown':
+      return tr('msgtype.unknown');
+    default:
+      return type;
+  }
 }
 
 export function accountLabel(phone: string | undefined, tr: Translate): string {

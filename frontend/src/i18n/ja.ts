@@ -18,7 +18,7 @@ const ja: Dict = {
   'table.channel': 'チャンネル',
   'table.account': 'アカウント',
   'table.user': 'ユーザー',
-  'table.status': '状態',
+  'table.status': 'WhatsApp',
   'table.statusHint': 'このコンピューターの WhatsApp（Baileys）接続',
   'table.cloud': 'クラウド',
   'table.cloudHint': 'サーバーへのクラウド WebSocket 接続',
@@ -82,7 +82,7 @@ const ja: Dict = {
   'detail.lineUserPlaceholder': 'u…',
   'detail.message': 'メッセージ',
   'detail.messagePlaceholder': 'メッセージを入力',
-  'detail.forwardTitle': '受信メッセージを転送',
+  'detail.forwardTitle': 'HTTP Webhook',
   'detail.forwardHint': '任意。新しいメッセージはこの URL に送信されます。',
   'detail.url': 'URL',
   'detail.scanHint': '連携を完了するには WhatsApp でこのコードをスキャンします。',
@@ -91,7 +91,7 @@ const ja: Dict = {
   'detail.forwardSaved': '転送を保存しました',
   'detail.forwardOff': '転送を停止しました',
   'detail.cloudTitle': 'クラウド WebSocket',
-  'detail.cloudHint': '受信したメッセージを WebSocket でサーバーに送信します。',
+  'detail.cloudHint': '任意。このパソコンが URL に接続し、クラウドサーバーがこの接続で送受信できます。ノートパソコンに公開ポートは不要です。',
   'detail.cloudUrl': 'WebSocket URL',
   'detail.cloudToken': '認証トークン',
   'detail.cloudTokenPlaceholder': 'サーバーから渡された Bearer トークン',
@@ -151,6 +151,19 @@ const ja: Dict = {
   'history.rawOut': 'JSON出力',
   'history.openReceived': '{name} の受信メッセージ',
   'history.openSent': '{name} の送信メッセージ',
+
+  'msgtype.text': 'テキスト',
+  'msgtype.image': '画像',
+  'msgtype.audio': '音声',
+  'msgtype.video': '動画',
+  'msgtype.document': 'ドキュメント',
+  'msgtype.sticker': 'ステッカー',
+  'msgtype.location': '位置情報',
+  'msgtype.contact': '連絡先',
+  'msgtype.unknown': '不明',
+
+  'error.health': 'バックエンドに接続できません (HTTP {status})',
+  'error.http': 'リクエストに失敗しました (HTTP {status})',
 };
 
 export default ja;

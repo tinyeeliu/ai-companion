@@ -10,7 +10,7 @@
     type Connection,
     type MessageStatus,
   } from './api';
-  import { tr as translate } from './i18n';
+  import { locale, tr as translate } from './i18n';
   import { navigate, setCrumb } from './nav';
   import {
     messagesRoute,
@@ -18,7 +18,12 @@
     type MessageFilters,
     type MessagesParams,
   } from './routes';
-  import { formatTimestamp, messageStatusLabel, messageStatusTone } from './status';
+  import {
+    formatTimestamp,
+    messageStatusLabel,
+    messageStatusTone,
+    messageTypeLabel,
+  } from './status';
   import MessageDetailDialog from './MessageDetailDialog.svelte';
   import SendMessageDialog from './SendMessageDialog.svelte';
   import { tip } from './tooltip';
@@ -144,7 +149,7 @@
       >
         <option value="">{$translate('filter.all')}</option>
         {#each MESSAGE_TYPES as type (type)}
-          <option value={type}>{type}</option>
+          <option value={type}>{messageTypeLabel(type, $translate)}</option>
         {/each}
       </select>
     </label>
@@ -203,8 +208,8 @@
         <tbody>
           {#each messages as row (row.id)}
             <tr>
-              <td>{formatTimestamp(row.timestamp)}</td>
-              <td>{row.type}</td>
+              <td>{formatTimestamp(row.timestamp, $locale)}</td>
+              <td>{messageTypeLabel(row.type, $translate)}</td>
               <td class="summary">{row.summary || '—'}</td>
               <td>{row.from || '—'}</td>
               <td>{row.to || '—'}</td>

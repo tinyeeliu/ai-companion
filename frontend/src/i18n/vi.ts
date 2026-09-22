@@ -18,7 +18,7 @@ const vi: Dict = {
   'table.channel': 'Kênh',
   'table.account': 'Tài khoản',
   'table.user': 'Người dùng',
-  'table.status': 'Trạng thái',
+  'table.status': 'WhatsApp',
   'table.statusHint': 'Kết nối WhatsApp (Baileys) trên máy tính này',
   'table.cloud': 'Đám mây',
   'table.cloudHint': 'Kết nối WebSocket với máy chủ',
@@ -82,7 +82,7 @@ const vi: Dict = {
   'detail.lineUserPlaceholder': 'u…',
   'detail.message': 'Tin nhắn',
   'detail.messagePlaceholder': 'Viết tin nhắn',
-  'detail.forwardTitle': 'Chuyển tiếp tin nhắn đến',
+  'detail.forwardTitle': 'Webhook HTTP',
   'detail.forwardHint': 'Tùy chọn. Mỗi tin nhắn mới được gửi đến URL này.',
   'detail.url': 'URL',
   'detail.scanHint': 'Quét mã này trong WhatsApp để hoàn tất kết nối.',
@@ -91,7 +91,7 @@ const vi: Dict = {
   'detail.forwardSaved': 'Đã lưu chuyển tiếp',
   'detail.forwardOff': 'Đã tắt chuyển tiếp',
   'detail.cloudTitle': 'WebSocket đám mây',
-  'detail.cloudHint': 'Gửi tin nhắn đến tới máy chủ của bạn qua WebSocket.',
+  'detail.cloudHint': 'Tùy chọn. Máy tính này kết nối tới URL để máy chủ đám mây có thể gửi và nhận qua kết nối này. Laptop không cần cổng công khai.',
   'detail.cloudUrl': 'URL WebSocket',
   'detail.cloudToken': 'Mã xác thực',
   'detail.cloudTokenPlaceholder': 'Mã Bearer từ máy chủ',
@@ -151,6 +151,19 @@ const vi: Dict = {
   'history.rawOut': 'JSON đầu ra',
   'history.openReceived': 'Tin đã nhận của {name}',
   'history.openSent': 'Tin đã gửi của {name}',
+
+  'msgtype.text': 'Văn bản',
+  'msgtype.image': 'Hình ảnh',
+  'msgtype.audio': 'Âm thanh',
+  'msgtype.video': 'Video',
+  'msgtype.document': 'Tài liệu',
+  'msgtype.sticker': 'Nhãn dán',
+  'msgtype.location': 'Vị trí',
+  'msgtype.contact': 'Danh bạ',
+  'msgtype.unknown': 'Không rõ',
+
+  'error.health': 'Không kết nối được máy chủ (HTTP {status})',
+  'error.http': 'Yêu cầu thất bại (HTTP {status})',
 };
 
 export default vi;

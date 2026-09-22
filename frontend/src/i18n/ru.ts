@@ -18,7 +18,7 @@ const ru: Dict = {
   'table.channel': 'Канал',
   'table.account': 'Аккаунт',
   'table.user': 'Пользователь',
-  'table.status': 'Статус',
+  'table.status': 'WhatsApp',
   'table.statusHint': 'Подключение WhatsApp (Baileys) на этом компьютере',
   'table.cloud': 'Облако',
   'table.cloudHint': 'Облачное WebSocket-соединение с сервером',
@@ -82,7 +82,7 @@ const ru: Dict = {
   'detail.lineUserPlaceholder': 'u…',
   'detail.message': 'Сообщение',
   'detail.messagePlaceholder': 'Введите сообщение',
-  'detail.forwardTitle': 'Пересылать входящие сообщения',
+  'detail.forwardTitle': 'HTTP-вебхук',
   'detail.forwardHint': 'Необязательно. Каждое новое сообщение отправляется на этот URL.',
   'detail.url': 'URL',
   'detail.scanHint': 'Отсканируйте этот код в WhatsApp, чтобы завершить привязку.',
@@ -91,7 +91,7 @@ const ru: Dict = {
   'detail.forwardSaved': 'Пересылка сохранена',
   'detail.forwardOff': 'Пересылка отключена',
   'detail.cloudTitle': 'Облачный WebSocket',
-  'detail.cloudHint': 'Отправляйте входящие сообщения на свой сервер через WebSocket.',
+  'detail.cloudHint': 'Необязательно. Этот компьютер подключается к URL, чтобы облачный сервер мог отправлять и получать сообщения через это соединение. Ноутбуку не нужен публичный порт.',
   'detail.cloudUrl': 'URL WebSocket',
   'detail.cloudToken': 'Токен авторизации',
   'detail.cloudTokenPlaceholder': 'Bearer-токен от сервера',
@@ -151,6 +151,19 @@ const ru: Dict = {
   'history.rawOut': 'Исходящий JSON',
   'history.openReceived': 'Входящие сообщения {name}',
   'history.openSent': 'Исходящие сообщения {name}',
+
+  'msgtype.text': 'Текст',
+  'msgtype.image': 'Изображение',
+  'msgtype.audio': 'Аудио',
+  'msgtype.video': 'Видео',
+  'msgtype.document': 'Документ',
+  'msgtype.sticker': 'Стикер',
+  'msgtype.location': 'Геолокация',
+  'msgtype.contact': 'Контакт',
+  'msgtype.unknown': 'Неизвестно',
+
+  'error.health': 'Сервер недоступен (HTTP {status})',
+  'error.http': 'Запрос завершился ошибкой (HTTP {status})',
 };
 
 export default ru;

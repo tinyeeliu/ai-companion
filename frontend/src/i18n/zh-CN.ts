@@ -17,7 +17,7 @@ const zhCN: Dict = {
   'table.channel': '渠道',
   'table.account': '账号',
   'table.user': '用户',
-  'table.status': '状态',
+  'table.status': 'WhatsApp',
   'table.statusHint': '这台电脑上的 WhatsApp（Baileys）连接',
   'table.cloud': '云',
   'table.cloudHint': '与服务器的云 WebSocket 连接',
@@ -80,7 +80,7 @@ const zhCN: Dict = {
   'detail.lineUserPlaceholder': 'u…',
   'detail.message': '消息',
   'detail.messagePlaceholder': '输入消息',
-  'detail.forwardTitle': '转发收到的消息',
+  'detail.forwardTitle': 'HTTP Webhook',
   'detail.forwardHint': '可选。每条新消息都会发送到这个网址。',
   'detail.url': '网址',
   'detail.scanHint': '在 WhatsApp 中扫描此二维码完成关联。',
@@ -89,7 +89,7 @@ const zhCN: Dict = {
   'detail.forwardSaved': '转发已保存',
   'detail.forwardOff': '已关闭转发',
   'detail.cloudTitle': '云 WebSocket',
-  'detail.cloudHint': '把收到的消息经 WebSocket 连接到你的服务器。',
+  'detail.cloudHint': '可选。这台电脑会主动连接该网址，让云服务器通过此连接收发消息。笔记本电脑无需公网端口。',
   'detail.cloudUrl': 'WebSocket 网址',
   'detail.cloudToken': '鉴权令牌',
   'detail.cloudTokenPlaceholder': '服务器提供的 Bearer 令牌',
@@ -149,6 +149,19 @@ const zhCN: Dict = {
   'history.rawOut': 'JSON 输出',
   'history.openReceived': '{name} 的已接收消息',
   'history.openSent': '{name} 的已发送消息',
+
+  'msgtype.text': '文本',
+  'msgtype.image': '图片',
+  'msgtype.audio': '语音',
+  'msgtype.video': '视频',
+  'msgtype.document': '文档',
+  'msgtype.sticker': '贴纸',
+  'msgtype.location': '位置',
+  'msgtype.contact': '联系人',
+  'msgtype.unknown': '未知',
+
+  'error.health': '无法连接后端（HTTP {status}）',
+  'error.http': '请求失败（HTTP {status}）',
 };
 
 export default zhCN;

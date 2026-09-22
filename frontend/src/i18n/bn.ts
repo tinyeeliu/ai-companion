@@ -18,7 +18,7 @@ const bn: Dict = {
   'table.channel': 'চ্যানেল',
   'table.account': 'অ্যাকাউন্ট',
   'table.user': 'ব্যবহারকারী',
-  'table.status': 'অবস্থা',
+  'table.status': 'WhatsApp',
   'table.statusHint': 'এই কম্পিউটারে WhatsApp (Baileys) সংযোগ',
   'table.cloud': 'ক্লাউড',
   'table.cloudHint': 'সার্ভারের সাথে ক্লাউড WebSocket সংযোগ',
@@ -82,7 +82,7 @@ const bn: Dict = {
   'detail.lineUserPlaceholder': 'u…',
   'detail.message': 'বার্তা',
   'detail.messagePlaceholder': 'একটি বার্তা লিখুন',
-  'detail.forwardTitle': 'আসা বার্তা ফরওয়ার্ড করুন',
+  'detail.forwardTitle': 'HTTP Webhook',
   'detail.forwardHint': 'ঐচ্ছিক। প্রতিটি নতুন বার্তা এই URL-এ পাঠানো হয়।',
   'detail.url': 'URL',
   'detail.scanHint': 'সংযোগ সম্পূর্ণ করতে WhatsApp-এ এই কোডটি স্ক্যান করুন।',
@@ -91,7 +91,7 @@ const bn: Dict = {
   'detail.forwardSaved': 'ফরওয়ার্ডিং সংরক্ষিত',
   'detail.forwardOff': 'ফরওয়ার্ডিং বন্ধ করা হয়েছে',
   'detail.cloudTitle': 'ক্লাউড WebSocket',
-  'detail.cloudHint': 'WebSocket দিয়ে আসা বার্তা আপনার সার্ভারে পাঠান।',
+  'detail.cloudHint': 'ঐচ্ছিক। এই কম্পিউটার URL-এ সংযোগ করে যাতে একটি ক্লাউড সার্ভার এই সংযোগে পাঠাতে ও গ্রহণ করতে পারে। ল্যাপটপের পাবলিক পোর্টের প্রয়োজন নেই।',
   'detail.cloudUrl': 'WebSocket URL',
   'detail.cloudToken': 'অথ টোকেন',
   'detail.cloudTokenPlaceholder': 'সার্ভার থেকে পাওয়া Bearer টোকেন',
@@ -151,6 +151,19 @@ const bn: Dict = {
   'history.rawOut': 'JSON আউটপুট',
   'history.openReceived': '{name} এর প্রাপ্ত বার্তা',
   'history.openSent': '{name} এর প্রেরিত বার্তা',
+
+  'msgtype.text': 'টেক্সট',
+  'msgtype.image': 'ছবি',
+  'msgtype.audio': 'অডিও',
+  'msgtype.video': 'ভিডিও',
+  'msgtype.document': 'ডকুমেন্ট',
+  'msgtype.sticker': 'স্টিকার',
+  'msgtype.location': 'লোকেশন',
+  'msgtype.contact': 'যোগাযোগ',
+  'msgtype.unknown': 'অজানা',
+
+  'error.health': 'সার্ভারে পৌঁছানো যাচ্ছে না (HTTP {status})',
+  'error.http': 'অনুরোধ ব্যর্থ (HTTP {status})',
 };
 
 export default bn;

@@ -18,7 +18,7 @@ const th: Dict = {
   'table.channel': 'ช่องทาง',
   'table.account': 'บัญชี',
   'table.user': 'ผู้ใช้',
-  'table.status': 'สถานะ',
+  'table.status': 'WhatsApp',
   'table.statusHint': 'การเชื่อมต่อ WhatsApp (Baileys) บนคอมพิวเตอร์เครื่องนี้',
   'table.cloud': 'คลาวด์',
   'table.cloudHint': 'การเชื่อมต่อ WebSocket กับเซิร์ฟเวอร์',
@@ -82,7 +82,7 @@ const th: Dict = {
   'detail.lineUserPlaceholder': 'u…',
   'detail.message': 'ข้อความ',
   'detail.messagePlaceholder': 'พิมพ์ข้อความ',
-  'detail.forwardTitle': 'ส่งต่อข้อความที่เข้ามา',
+  'detail.forwardTitle': 'HTTP Webhook',
   'detail.forwardHint': 'ไม่บังคับ ข้อความใหม่แต่ละข้อความจะถูกส่งไปยัง URL นี้',
   'detail.url': 'URL',
   'detail.scanHint': 'สแกนโค้ดนี้ใน WhatsApp เพื่อเชื่อมต่อให้เสร็จ',
@@ -91,7 +91,7 @@ const th: Dict = {
   'detail.forwardSaved': 'บันทึกการส่งต่อแล้ว',
   'detail.forwardOff': 'ปิดการส่งต่อแล้ว',
   'detail.cloudTitle': 'WebSocket บนคลาวด์',
-  'detail.cloudHint': 'ส่งข้อความที่ได้รับไปยังเซิร์ฟเวอร์ของคุณผ่าน WebSocket',
+  'detail.cloudHint': 'ไม่บังคับ คอมพิวเตอร์เครื่องนี้จะเชื่อมต่อไปยัง URL เพื่อให้เซิร์ฟเวอร์บนคลาวด์ส่งและรับผ่านการเชื่อมต่อนี้ได้ แล็ปท็อปไม่ต้องมีพอร์ตสาธารณะ',
   'detail.cloudUrl': 'URL ของ WebSocket',
   'detail.cloudToken': 'โทเคนยืนยันตัวตน',
   'detail.cloudTokenPlaceholder': 'โทเคน Bearer จากเซิร์ฟเวอร์',
@@ -151,6 +151,19 @@ const th: Dict = {
   'history.rawOut': 'JSON ขาออก',
   'history.openReceived': 'ข้อความขาเข้าของ {name}',
   'history.openSent': 'ข้อความขาออกของ {name}',
+
+  'msgtype.text': 'ข้อความ',
+  'msgtype.image': 'รูปภาพ',
+  'msgtype.audio': 'เสียง',
+  'msgtype.video': 'วิดีโอ',
+  'msgtype.document': 'เอกสาร',
+  'msgtype.sticker': 'สติกเกอร์',
+  'msgtype.location': 'ตำแหน่ง',
+  'msgtype.contact': 'ผู้ติดต่อ',
+  'msgtype.unknown': 'ไม่ทราบ',
+
+  'error.health': 'เชื่อมต่อแบ็กเอนด์ไม่ได้ (HTTP {status})',
+  'error.http': 'คำขอล้มเหลว (HTTP {status})',
 };
 
 export default th;

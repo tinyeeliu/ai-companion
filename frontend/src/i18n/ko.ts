@@ -18,7 +18,7 @@ const ko: Dict = {
   'table.channel': '채널',
   'table.account': '계정',
   'table.user': '사용자',
-  'table.status': '상태',
+  'table.status': 'WhatsApp',
   'table.statusHint': '이 컴퓨터의 WhatsApp(Baileys) 연결',
   'table.cloud': '클라우드',
   'table.cloudHint': '서버와의 클라우드 WebSocket 연결',
@@ -82,7 +82,7 @@ const ko: Dict = {
   'detail.lineUserPlaceholder': 'u…',
   'detail.message': '메시지',
   'detail.messagePlaceholder': '메시지 입력',
-  'detail.forwardTitle': '수신 메시지 전달',
+  'detail.forwardTitle': 'HTTP 웹훅',
   'detail.forwardHint': '선택 사항. 새 메시지마다 이 URL로 전송됩니다.',
   'detail.url': 'URL',
   'detail.scanHint': '연결을 마치려면 WhatsApp에서 이 코드를 스캔하세요.',
@@ -91,7 +91,7 @@ const ko: Dict = {
   'detail.forwardSaved': '전달 저장됨',
   'detail.forwardOff': '전달 꺼짐',
   'detail.cloudTitle': '클라우드 WebSocket',
-  'detail.cloudHint': '받은 메시지를 WebSocket으로 서버에 보냅니다.',
+  'detail.cloudHint': '선택 사항. 이 컴퓨터가 URL에 연결되어 클라우드 서버가 이 연결로 보내고 받을 수 있습니다. 노트북에 공용 포트가 필요하지 않습니다.',
   'detail.cloudUrl': 'WebSocket URL',
   'detail.cloudToken': '인증 토큰',
   'detail.cloudTokenPlaceholder': '서버에서 받은 Bearer 토큰',
@@ -151,6 +151,19 @@ const ko: Dict = {
   'history.rawOut': 'JSON 출력',
   'history.openReceived': '{name}의 받은 메시지',
   'history.openSent': '{name}의 보낸 메시지',
+
+  'msgtype.text': '텍스트',
+  'msgtype.image': '이미지',
+  'msgtype.audio': '오디오',
+  'msgtype.video': '동영상',
+  'msgtype.document': '문서',
+  'msgtype.sticker': '스티커',
+  'msgtype.location': '위치',
+  'msgtype.contact': '연락처',
+  'msgtype.unknown': '알 수 없음',
+
+  'error.health': '백엔드에 연결할 수 없습니다 (HTTP {status})',
+  'error.http': '요청 실패 (HTTP {status})',
 };
 
 export default ko;
