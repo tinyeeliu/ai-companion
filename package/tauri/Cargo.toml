@@ -1,0 +1,26 @@
+[package]
+name = "ai-companion"
+version = "0.1.0"
+description = "AI Companion local WhatsApp gateway"
+authors = ["AI Companion"]
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+name = "ai_companion_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-autostart = "2"
+tauri-plugin-shell = "2"
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

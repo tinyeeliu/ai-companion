@@ -1,0 +1,22 @@
+{
+  "name": "companion-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run src/index.ts",
+    "start": "bun run src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "compile": "bun build --compile src/index.ts --outfile ../package/tauri/binaries/companion-server-aarch64-apple-darwin"
+  },
+  "dependencies": {
+    "@evex/linejs": "npm:@jsr/evex__linejs@^3.4.2",
+    "@whiskeysockets/baileys": "^7.0.0-rc.9",
+    "hono": "^4.8.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.8.3"
+  }
+}
