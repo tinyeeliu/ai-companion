@@ -1,0 +1,92 @@
+name: Deploy Companion
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-companion-${{ github.ref_name }}
+  cancel-in-progress: false
+
+on:
+  push:
+    tags:
+      - "*-companion"
+
+jobs:
+  build:
+    name: Build ${{ matrix.artifact }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-26
+            artifact: macos
+          - os: windows-latest
+            artifact: windows
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: package/tauri
+
+      - name: Package installer
+        shell: bash
+        run: bash scripts/package.sh
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: companion-${{ matrix.artifact }}
+          if-no-files-found: error
+          path: |
+            package/tauri/target/**/bundle/dmg/*.dmg
+            package/tauri/target/**/bundle/nsis/*-setup.exe
+
+  release:
+    name: Publish GitHub release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download installers
+        uses: actions/download-artifact@v4
+        with:
+          pattern: companion-*
+          path: dist
+          merge-multiple: true
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          dmg="$(find dist -type f -name '*.dmg' -print -quit)"
+          exe="$(find dist -type f -name '*-setup.exe' -print -quit)"
+          if [ -z "$dmg" ] || [ -z "$exe" ]; then
+            echo "ERROR: expected a macOS DMG and a Windows setup.exe." >&2
+            find dist -type f -print
+            exit 1
+          fi
+
+          mkdir -p release
+          cp "$dmg" release/AICompanion-macos-aarch64.dmg
+          cp "$exe" release/AICompanion-windows-x64-setup.exe
+
+          tag="${GITHUB_REF_NAME}"
+          echo "Publishing $tag"
+
+          gh release create "$tag" \
+            --title "AI Companion $tag" \
+            --notes "macOS Apple Silicon DMG and Windows x64 installer. These builds are not code-signed. macOS Gatekeeper and Windows SmartScreen may warn before the app opens." \
+            release/AICompanion-macos-aarch64.dmg \
+            release/AICompanion-windows-x64-setup.exe

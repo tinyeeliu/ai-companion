@@ -9,6 +9,7 @@ package/tauri/gen/
 package/tauri/binaries/companion-server
 package/tauri/binaries/companion-server-aarch64-apple-darwin
 package/tauri/binaries/companion-server-x86_64-apple-darwin
+package/tauri/binaries/companion-server-x86_64-pc-windows-msvc.exe
 frontend/dist/
 *.log
 .DS_Store
