@@ -2,8 +2,9 @@
 
 Local personal WhatsApp and LINE gateway. Phone sessions stay on this machine.
 The packaged Bun sidecar binds `127.0.0.1:38888` and serves REST under `/api/v1/im/*`;
-`scripts/run.sh` binds `127.0.0.1:38000` with a separate `data-dev/` tree so a developer
-can keep the Mac app running. There is no admin username/password account.
+`scripts/run.sh` binds `127.0.0.1:38000` and reuses the installed app's data dir when it
+exists, so one linked session serves both builds. Only one backend may run at a time.
+There is no admin username/password account.
 
 This app does not import `sm3/` or `frontend/` packages. Cloud integration is a
 generic reverse WebSocket described in [CloudServer.md](CloudServer.md).
@@ -20,7 +21,7 @@ Tauri (package/)  →  bun sidecar (backend/)  →  Baileys WhatsApp socket
 - Token: first boot writes `data/config.json`. Header `Authorization: Bearer <token>` on every `/api/v1/im/*` route except `GET /api/v1/im/health`.
 - Access: localhost only. Other computers cannot call the API unless the bind address,
   firewall, and authentication model are deliberately changed.
-- Data: `COMPANION_DATA_DIR` or `companion/data` (packaged / default). `scripts/run.sh` sets `companion/data-dev`. Installed app uses Application Support.
+- Data: `COMPANION_DATA_DIR` or `companion/data` (packaged / default). Installed app uses Application Support. `scripts/run.sh` uses `COMPANION_DATA_DIR` when set, else the Application Support dir when it exists, else `companion/data-dev`.
 - Frontend files: `COMPANION_FRONTEND_DIR`, else `companion/frontend/dist` when built, else `companion/frontend`. Dev Vite is `:5178` and proxies `/api` to `:38000`.
 
 ## Files
