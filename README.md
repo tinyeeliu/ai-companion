@@ -41,6 +41,38 @@ cd ../package && bun install && bun run build
 
 DMG: `package/tauri/target/release/bundle/dmg/`. Tray + start at login. Closing the window hides the app; Quit stops linked sessions.
 
+## Install
+
+Download from [Releases](https://github.com/tinyeeliu/ai-companion/releases):
+
+| Platform | File |
+|---|---|
+| macOS (Apple Silicon) | `AICompanion-macos-aarch64.dmg` |
+| Windows (x64) | `AICompanion-windows-x64-setup.exe` |
+
+Installers are not code-signed or notarized, so the OS warns on first launch.
+
+**macOS**: open the DMG and drag AICompanion into Applications.
+
+1. Open the app. Gatekeeper reports "Apple could not verify ... is free of malware".
+2. Allow it once, either way:
+   - System Settings → Privacy & Security → scroll to Security → **Open Anyway**
+   - or `xattr -dr com.apple.quarantine /Applications/AICompanion.app`
+
+Right-click → Open does not bypass this on macOS 15+.
+
+**Windows**: if SmartScreen shows "Windows protected your PC", choose **More info** → **Run anyway**.
+
+### Release builds
+
+Tag `main` to build and publish both installers:
+
+```bash
+./scripts/tag_release.sh
+```
+
+The tag (`*-companion`) starts `.github/workflows/deploy-companion.yaml`.
+
 ## API
 
 All routes except health need `Authorization: Bearer <token>`.

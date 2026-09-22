@@ -17,3 +17,14 @@ cd ../package && bun run build
 ```
 
 Output: `tauri/target/release/bundle/dmg/`.
+
+Local builds run directly. A build downloaded from Releases is blocked by Gatekeeper
+until the quarantine flag is cleared:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/AICompanion.app
+```
+
+The bundle is ad-hoc signed (`"signingIdentity": "-"` in `tauri.conf.json`), not signed
+with a Developer ID and not notarized. Replacing that requires an Apple Developer
+account and CI secrets; see `../README.md`.

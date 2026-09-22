@@ -86,9 +86,22 @@ jobs:
           tag="${GITHUB_REF_NAME}"
           echo "Publishing $tag"
 
+          notes="$(printf '%s\n' \
+            'macOS (Apple Silicon) and Windows (x64) installers.' \
+            '' \
+            'These builds are not code-signed, so the OS warns on first launch.' \
+            '' \
+            'macOS: drag AICompanion from the DMG into Applications, then clear the quarantine flag once:' \
+            '' \
+            '  xattr -dr com.apple.quarantine /Applications/AICompanion.app' \
+            '' \
+            'Or use System Settings > Privacy & Security > Open Anyway. Right-click > Open does not bypass this on macOS 15+.' \
+            '' \
+            'Windows: if SmartScreen shows "Windows protected your PC", choose More info > Run anyway.')"
+
           gh release create "$tag" \
             --repo "$GITHUB_REPOSITORY" \
             --title "AI Companion $tag" \
-            --notes "macOS Apple Silicon DMG and Windows x64 installer. These builds are not code-signed. macOS Gatekeeper and Windows SmartScreen may warn before the app opens." \
+            --notes "$notes" \
             release/AICompanion-macos-aarch64.dmg \
             release/AICompanion-windows-x64-setup.exe
