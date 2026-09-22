@@ -1,11 +1,11 @@
 # AI Companion
 
-A prebuilt gateway for personal WhatsApp and LINE. Install it, link a phone once, and your app sends and receives messages. Companion take cares of the phone session, the reconnects, and the protocol exchange.
+A prebuilt gateway for personal WhatsApp and LINE. Install it, link a phone once, and your app sends and receives messages. Companion takes care of the phone session, the reconnects, and the protocol exchange.
 
-Your app talks to Companion over HTTP on this computer, or Companion connect to your websocker server and holds the connection. The phone protocol stays inside the gateway.
+Your app talks to Companion over HTTP on this computer, or Companion connects to your WebSocket server and holds the connection. The phone protocol stays inside the gateway.
 
-![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)
-![Releases](https://img.shields.io/badge/download-macOS%20%7C%20Windows-black)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![Releases](https://img.shields.io/badge/download-macOS%20%7C%20Windows-black)](https://github.com/tinyeeliu/ai-companion/releases)
 
 ![Phones linked on this computer](docs/images/phones.png)
 
@@ -155,7 +155,175 @@ curl -s -X PUT "$BASE/connection/CONNECTION_ID/cloud" \
 
 Your server accepts the WebSocket, checks the Bearer token, and answers `hello`. Events come in. Sends go back out on the same socket. Clear either setting with `{"url":null}`.
 
-Route details are in [spec/doc/Architecture.md](spec/doc/Architecture.md). The cloud frames and close codes are in [spec/doc/CloudServer.md](spec/doc/CloudServer.md). Implement that contract on your side. Companion already implements the other side.
+The webhook body above is a short summary Companion builds for you. The cloud socket is different: `data` is the object from [Baileys](https://github.com/WhiskeySockets/Baileys) or [LINEJS](https://jsr.io/@evex/linejs), unchanged. The next section is that exchange.
+
+Route details are in [spec/doc/Architecture.md](spec/doc/Architecture.md). Frame rules and close codes are in [spec/doc/CloudServer.md](spec/doc/CloudServer.md).
+
+## WhatsApp and LINE
+
+Companion is a linked device on the phone's account. [Baileys](https://github.com/WhiskeySockets/Baileys) is the WhatsApp Web library. [LINEJS](https://jsr.io/@evex/linejs) is the LINE library. Both speak the personal-account protocol. Companion holds the socket, the keys, and the reconnects. Your server never imports either library. It reads and writes the JSON those libraries already use.
+
+On the cloud socket every frame is a JSON text message. The envelope is the same for both apps. The library object sits in `data`.
+
+```json
+{
+  "v": 1,
+  "type": "event",
+  "connectionId": "home",
+  "channel": "whatsapp",
+  "name": "messages.upsert",
+  "data": {}
+}
+```
+
+`channel` is `whatsapp` or `line`. `name` is the library event or the method you are calling. `userId`, when present, is the channel address of the one person the frame is about (a WhatsApp phone number, or a LINE user id). Bytes inside `data` are `{ "$bin": "<base64>" }` instead of raw binary.
+
+An app on the same computer can read the same library object without a WebSocket: `GET /api/v1/im/connection/:id/messages/:messageId` returns it as `rawIn`.
+
+### WhatsApp (Baileys)
+
+Baileys connects as WhatsApp Web. Scanning the QR in Companion is "Link a device" on the phone. After that, Baileys keeps a multi-device session in the app's data folder and restores it on launch.
+
+Companion forwards two Baileys events:
+
+| `name` | What `data` is |
+|---|---|
+| `messages.upsert` | A new message, in Baileys' upsert shape |
+| `connection.update` | The socket moving between QR, open, and close |
+
+A text from the phone arrives as one message inside `messages`, with `type` set to `notify`. Ordinary text is the `conversation` field. A reply, link preview, or longer text is `extendedTextMessage.text`. Photos, video, audio, documents, and stickers use their own `*Message` object (`imageMessage`, and so on) on the same `message` field. Companion stores and forwards that object. It does not convert it into a private schema.
+
+```json
+{
+  "v": 1,
+  "type": "event",
+  "connectionId": "home",
+  "channel": "whatsapp",
+  "userId": "15551234002",
+  "name": "messages.upsert",
+  "data": {
+    "type": "notify",
+    "messages": [
+      {
+        "key": {
+          "remoteJid": "15551234002@s.whatsapp.net",
+          "fromMe": false,
+          "id": "3EB0ABC"
+        },
+        "messageTimestamp": 1750000000,
+        "message": { "conversation": "On my way" }
+      }
+    ]
+  }
+}
+```
+
+Real upserts carry more fields than this. Treat `key.id` as the vendor message id and use it to ignore duplicates. Companion already skips its own sends (`fromMe`) and status broadcasts before this frame is queued.
+
+To send, call Baileys' `sendMessage`. The arguments are the ones that method takes: a JID, then the content object. Text content is `{ "text": "…" }`. An image Baileys can upload for you is `{ "image": { "url": "https://…" }, "caption": "…" }`.
+
+```json
+{
+  "v": 1,
+  "type": "invoke",
+  "id": "send-1",
+  "connectionId": "home",
+  "channel": "whatsapp",
+  "name": "sendMessage",
+  "data": {
+    "args": [
+      "15551234002@s.whatsapp.net",
+      { "text": "On my way" }
+    ]
+  }
+}
+```
+
+Companion writes the send to disk and answers immediately. The `result` is a queue receipt. `key.id` here is Companion's id, not WhatsApp's id, and it does not mean the phone has delivered the message yet.
+
+```json
+{
+  "v": 1,
+  "type": "result",
+  "id": "send-1",
+  "connectionId": "home",
+  "channel": "whatsapp",
+  "name": "sendMessage",
+  "data": {
+    "key": {
+      "id": "0197…",
+      "remoteJid": "15551234002@s.whatsapp.net"
+    }
+  }
+}
+```
+
+Three other Baileys methods are allowed, and they run immediately rather than through the queue: `relayMessage`, `readMessages`, and `sendPresenceUpdate`. Anything else comes back as `METHOD_NOT_ALLOWED`.
+
+The local `POST /message` with `{ "to", "text" }` is the same send, written for a dashboard or a script. Companion turns that into `sendMessage` for you. Use `invoke` when your server already speaks Baileys' arguments.
+
+### LINE (LINEJS)
+
+LINEJS logs in as a second device on a personal LINE account (`ANDROIDSECONDARY`). The QR and the PIN in Companion are that login. The auth token and the end-to-end keys stay in the app's data folder. This is the protocol the LINE app uses, not the LINE Official Account API.
+
+Companion forwards one LINEJS event. `name` is `message`. `data` is the talk message LINEJS emitted. The LINE struct itself is `data.raw`: sender, recipient, id, text, and `contentType`. `contentType` `"NONE"` is a normal text. `"IMAGE"`, `"VIDEO"`, `"AUDIO"`, `"STICKER"`, `"FILE"`, and the other LINE types arrive the same way, with their metadata still on `raw`.
+
+```json
+{
+  "v": 1,
+  "type": "event",
+  "connectionId": "home",
+  "channel": "line",
+  "userId": "u11111111111111111111111111111111",
+  "name": "message",
+  "data": {
+    "isTalk": true,
+    "isSquare": false,
+    "raw": {
+      "id": "12345",
+      "from": "u11111111111111111111111111111111",
+      "to": "u99999999999999999999999999999999",
+      "text": "On my way",
+      "contentType": "NONE",
+      "createdTime": "1750000000000"
+    }
+  }
+}
+```
+
+`userId` is the sender's LINE mid, the same value as `raw.from`. Companion listens to 1:1 and group talk, and it does not forward LINE Square.
+
+To send text, call LINEJS `sendCompactMessage`. The arguments are the recipient mid, then the string.
+
+```json
+{
+  "v": 1,
+  "type": "invoke",
+  "id": "send-2",
+  "connectionId": "home",
+  "channel": "line",
+  "name": "sendCompactMessage",
+  "data": {
+    "args": ["u11111111111111111111111111111111", "On my way"]
+  }
+}
+```
+
+The queued ack is LINEJS' id field, filled with Companion's id until LINE accepts the send:
+
+```json
+{
+  "v": 1,
+  "type": "result",
+  "id": "send-2",
+  "connectionId": "home",
+  "channel": "line",
+  "name": "sendCompactMessage",
+  "data": { "messageId": "0197…" }
+}
+```
+
+`sendCompactMessage` is the only LINE method on the socket. A text send from `POST /message` calls that same method. The `to` value is the mid, and Companion does not strip characters from it.
 
 ## Limits
 
