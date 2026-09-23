@@ -1,7 +1,9 @@
 import makeWASocket, {
   downloadMediaMessage,
+  prepareWAMessageMedia,
   useMultiFileAuthState,
   type BaileysEventMap,
+  type proto,
   type WAMessage,
   type WASocket,
 } from '@whiskeysockets/baileys';
@@ -333,6 +335,40 @@ function baileysLogger() {
   return logger;
 }
 
+/**
+ * Uploads one interactive header media item to WhatsApp and returns its proto.
+ *
+ * `args` are `[kind, url, mimetype?]`. The mimetype matters: Baileys falls back
+ * to a per-type default (`image/jpeg` and friends), so a PNG header would be
+ * declared JPEG without it. The caller knows the stored object's mime, so it
+ * passes it through.
+ *
+ * Exported for tests: it is the one invoke whose argument shape is positional.
+ */
+export async function prepareMediaContent(
+  sock: WASocket,
+  args: unknown[],
+  upload: WASocket['waUploadToServer'] = sock.waUploadToServer,
+): Promise<proto.IMessage> {
+  const kind = typeof args[0] === 'string' ? args[0] : '';
+  const url = typeof args[1] === 'string' ? args[1] : '';
+  const mimetype = typeof args[2] === 'string' && args[2] !== '' ? args[2] : undefined;
+  const fileName = typeof args[3] === 'string' && args[3] !== '' ? args[3] : undefined;
+  if (url === '') throw new Error('prepareMedia requires a url');
+
+  if (kind === 'video') {
+    return prepareWAMessageMedia({ video: { url }, ...(mimetype != null ? { mimetype } : {}) }, { upload });
+  }
+  if (kind === 'document') {
+    return prepareWAMessageMedia(
+      { document: { url }, fileName: fileName ?? 'file', mimetype: mimetype ?? 'application/octet-stream' },
+      { upload },
+    );
+  }
+  if (kind !== 'image') throw new Error(`unsupported media kind ${kind}`);
+  return prepareWAMessageMedia({ image: { url }, ...(mimetype != null ? { mimetype } : {}) }, { upload });
+}
+
 class BaileysSession implements ChannelSession {
   private entry: SocketEntry | null = null;
   private currentQr: string | null = null;
@@ -438,6 +474,13 @@ class BaileysSession implements ChannelSession {
     const entry = this.entry;
     if (entry == null || !entry.connected) {
       throw new Error('not connected');
+    }
+    // `prepareMedia` is a module-level Baileys helper, not a socket method, so
+    // it cannot go through the generic `sock[name]` dispatch below. It exists
+    // because only the process holding the socket can upload media to WhatsApp,
+    // which an interactive header needs before the relay.
+    if (name === 'prepareMedia') {
+      return prepareMediaContent(entry.sock, args);
     }
     const sock = entry.sock as unknown as Record<string, unknown>;
     const method = sock[name];

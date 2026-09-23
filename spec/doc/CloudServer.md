@@ -183,7 +183,28 @@ These catalogs document what Companion currently forwards and invokes. A new cha
 
 Events (`name`): `messages.upsert`, `connection.update`. `data` is the raw Baileys payload.
 
-Invoke (`name`): `sendMessage`, `relayMessage`, `readMessages`, `sendPresenceUpdate`. `data.args` are the arguments those Baileys socket methods take. Media in `sendMessage` may use `{ image: { url } }` (and peers); Companion’s Baileys session uploads to WhatsApp.
+Invoke (`name`): `sendMessage`, `relayMessage`, `readMessages`, `sendPresenceUpdate`, `prepareMedia`. `data.args` are the arguments those Baileys socket methods take. Media in `sendMessage` may use `{ image: { url } }` (and peers); Companion’s Baileys session uploads to WhatsApp.
+
+#### `prepareMedia`
+
+```json
+{ "type": "invoke", "name": "prepareMedia", "data": { "args": ["image", "https://…/temp/abc.jpeg", "image/jpeg"] } }
+```
+
+`args` are `[kind, url, mimetype?, fileName?]` where `kind` is `image`, `video`, or
+`document`. It downloads the url, uploads the media to WhatsApp, and returns the resulting
+proto (`{ imageMessage: { url, directPath, mediaKey, … } }` and peers) as the `result`
+data.
+
+It exists because Baileys’ `prepareWAMessageMedia` — the only API that uploads media to
+WhatsApp — needs the socket’s upload function, so it can only run in the process holding
+the socket. A server that wants to send an **interactive** message with a header image (or
+a media carousel card) has to build that header here and embed the returned proto, because
+WhatsApp refuses media it has not uploaded itself.
+
+Send the `mimetype` when you know it: Baileys otherwise falls back to a per-type default
+(`image/jpeg` for `image`, and so on), so a PNG would be declared JPEG. `fileName` is only
+used for `document`.
 
 #### Decrypted media on `messages.upsert`
 

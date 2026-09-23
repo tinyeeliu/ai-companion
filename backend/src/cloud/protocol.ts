@@ -46,7 +46,7 @@ export const TERMINAL_CLOSE_CODE = 4401;
 const BIN_KEY = '$bin';
 
 export const CHANNEL_INVOKE: Record<string, readonly string[]> = {
-  whatsapp: ['sendMessage', 'relayMessage', 'readMessages', 'sendPresenceUpdate'],
+  whatsapp: ['sendMessage', 'relayMessage', 'readMessages', 'sendPresenceUpdate', 'prepareMedia'],
   line: ['sendCompactMessage'],
 };
 
