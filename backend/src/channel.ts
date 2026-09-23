@@ -37,6 +37,12 @@ export interface SessionHooks {
    * single one (a WhatsApp JID / phone, a LINE user id); omitted for mixed batches.
    */
   onVendorEvent?: (name: string, data: unknown, userId?: string) => void;
+  /**
+   * Upload one decrypted media buffer to the cloud's storage and return its
+   * public url, or null when the link has no presign endpoint (or either step
+   * failed). Null is not an error: the caller sends the bytes inline instead.
+   */
+  uploadMedia?: (bytes: Uint8Array, mimetype: string) => Promise<{ url: string } | null>;
 }
 
 export interface ChannelSession {

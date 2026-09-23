@@ -53,6 +53,12 @@ export type CloudLinkHooks = {
    */
   onOpened?: () => void;
   /**
+   * Media presign endpoint the server advertised on its `hello`, or '' when it
+   * advertised none. The manager records it so the channel can upload media
+   * directly (1B) instead of shipping bytes in the frame (1A).
+   */
+  onUploadEndpoint?: (url: string) => void;
+  /**
    * Queue an `invoke` instead of running it inline. Returning non-null means the
    * call was accepted for later delivery and that value is the `result` data;
    * returning null keeps the existing inline path (and its NOT_CONNECTED check).
@@ -239,6 +245,10 @@ export class CloudLink {
         this.helloTimer = null;
       }
       this.startPing();
+      // The ack may carry the media presign endpoint. Reported on every hello so
+      // a server that moves it (or starts advertising it) is picked up on the
+      // next reconnect; '' means the frame carried none and media stays inline.
+      this.hooks.onUploadEndpoint?.(uploadEndpointFrom(frame.data));
       this.hooks.onOpened?.();
       return;
     }
@@ -347,4 +357,17 @@ function invokeArgs(data: unknown): unknown[] {
     if (Array.isArray(args)) return args;
   }
   return [];
+}
+
+/**
+ * The media presign endpoint a `hello` ack advertised, or '' when it carried
+ * none. Reads `data.upload.url`; anything else (an older server, a proxy that
+ * rewrote the payload) is simply "no endpoint", which leaves the link on 1A.
+ */
+export function uploadEndpointFrom(data: unknown): string {
+  if (data == null || typeof data !== 'object' || Array.isArray(data)) return '';
+  const upload = (data as { upload?: unknown }).upload;
+  if (upload == null || typeof upload !== 'object' || Array.isArray(upload)) return '';
+  const url = (upload as { url?: unknown }).url;
+  return typeof url === 'string' ? url.trim() : '';
 }

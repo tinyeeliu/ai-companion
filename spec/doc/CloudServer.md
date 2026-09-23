@@ -36,7 +36,7 @@ PUT /api/v1/im/connection/:id/cloud
 3. Missing or invalid token: reject the upgrade with HTTP 401 — no socket is created. A token you later decide to reject (revoked, link disabled, replaced by a newer socket) is a close with code `4401`.
 4. v1 uses JSON **text** frames. No WebSocket subprotocol.
 5. Companion sends `hello` within 10 seconds. If it does not, close with code `4408`.
-6. Reply `hello` `{ "ok": true }`. The socket is live.
+6. Reply `hello` `{ "ok": true }`. The socket is live. The reply may also carry an optional `upload` block (see below).
 7. Either side sends `ping` at least every 30 seconds; the other replies `pong`. Proxies often idle-timeout between 30 and 120 seconds.
 8. On close, Companion reconnects with exponential backoff (1s, 2s, 4s, … cap 60s) until the connection is disabled or `url` is cleared — **except** after `4401`, which means "do not retry" (see below).
 
@@ -184,6 +184,79 @@ These catalogs document what Companion currently forwards and invokes. A new cha
 Events (`name`): `messages.upsert`, `connection.update`. `data` is the raw Baileys payload.
 
 Invoke (`name`): `sendMessage`, `relayMessage`, `readMessages`, `sendPresenceUpdate`. `data.args` are the arguments those Baileys socket methods take. Media in `sendMessage` may use `{ image: { url } }` (and peers); Companion’s Baileys session uploads to WhatsApp.
+
+#### Decrypted media on `messages.upsert`
+
+Vendor media is end-to-end encrypted, so a server that receives only the proto cannot read
+it. On a `messages.upsert` event each message **may** carry a sibling `media` block next to
+`key` and `message`, holding the decrypted plaintext the Companion already had to fetch:
+
+```json
+{
+  "key": { "id": "3EB0…", "remoteJid": "6581111111@s.whatsapp.net", "fromMe": false },
+  "message": { "imageMessage": { "mediaKey": { "$bin": "…" }, "directPath": "/v/…" } },
+  "media": {
+    "bytes": { "$bin": "<base64>" },
+    "mimetype": "image/jpeg",
+    "sha256": "iZzPCOcz1ebwyFwAvan8nt6Q1rD4aBCf2c7O61PWLgQ=",
+    "length": 289089
+  }
+}
+```
+
+- The block is a **sibling of `key` / `message`**, not a field of the vendor proto, so
+  `messages[]` entries stay valid Baileys messages apart from this one added key.
+- It is emitted only for media the Companion decrypted (`image`, `video`, `audio`,
+  `document`). Absent means "not decrypted": a server must not invent the bytes.
+- `bytes` uses the protocol’s `$bin` convention (see [Binary JSON](#binary-json)).
+- `mimetype` is the plaintext mime (the inner proto’s `imageMessage.mimetype` and peers).
+- `sha256` is the hash of the **plaintext**, encoded **base64url without padding**.
+  WhatsApp’s own `fileSha256` is standard base64 *with* padding, so a Companion reusing
+  that field must normalize it; otherwise the same file has two identities and
+  content-addressed dedupe silently fails.
+- `length` is the plaintext byte count (the same quantity as the proto `fileLength`) — not
+  the ciphertext’s and not the base64’s.
+- A `url` field carries the same plaintext when the Companion uploaded it to storage itself
+  (see "Uploading to storage instead of sending bytes"): the block then has `url` and no
+  `bytes`. Receivers should treat `sha256` / `length` as advisory while `bytes` is present
+  (recompute from the bytes), and as authoritative once `url` replaces `bytes`.
+- Media is skipped, never deferred, when it is too large or could not be decrypted: the
+  block is simply omitted.
+
+A `media` block can push a frame well past a text payload, so implementations should cap
+the plaintext total per frame as well as per file.
+
+#### Uploading to storage instead of sending bytes
+
+A server that wants media off the socket can hand the Companion a **presign endpoint** on
+the `hello` reply, and **upload the bytes itself**:
+
+```json
+{ "v": 1, "type": "hello", "data": { "ok": true, "upload": { "url": "https://api.example.com/v1/media/presign" } } }
+```
+
+Then, per media message, the Companion:
+
+1. `POST`s `{ mimetype, length, sha256 }` to that endpoint with the same
+   `Authorization: Bearer` token the socket authenticated with;
+2. receives `{ uploadUrl, downloadUrl }` and `PUT`s the plaintext to `uploadUrl`,
+   sending the **same `Content-Type`** it declared (it is part of the signature);
+3. sends the `messages.upsert` event with `media: { url, mimetype, sha256, length }`
+   instead of `media.bytes`.
+
+Notes for a server implementing this:
+
+- The endpoint is part of the `hello` reply rather than something the Companion
+  configures, so the client needs no extra setting. Omit the block and the Companion
+  simply keeps sending bytes inline.
+- The endpoint lives on the server's **API** origin, which is not necessarily the host the
+  socket dialled (a deployment that terminates long-lived sockets on a separate streaming
+  host must advertise the API host here).
+- Buying a presigned URL is the point: the client never holds storage credentials.
+- Treat a failed presign or PUT as "no block": the Companion retries that message with
+  `bytes` inline, so a client is never worse off than before.
+- A url is only as trustworthy as the server's own object naming. Validate host, path, and
+  that the object name embeds the `sha256` before fetching anything.
 
 ### `line`
 

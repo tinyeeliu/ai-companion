@@ -122,6 +122,10 @@ const en: Dict = {
   'detail.cloudSaveHint': 'Enter a ws:// or wss:// URL and its auth token to connect.',
   'detail.cloudSaved': 'Cloud link saved',
   'detail.cloudOff': 'Cloud link turned off',
+  'detail.uploadUrl': 'Media upload',
+  'detail.uploadUrlHint':
+    'Learned from the server when it connects. While it is known, media is uploaded straight to storage and only a link is sent; otherwise media is sent inside the message.',
+  'detail.uploadUrlNone': 'Not offered by the server',
   'detail.renameTitle': 'Edit name',
   'detail.nameSaved': 'Name saved',
   'detail.nameRequired': 'Name is required',

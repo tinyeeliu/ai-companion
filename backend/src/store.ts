@@ -28,6 +28,7 @@ function normalizeRow(row: ConnectionIndexEntry, channel: Channel): ConnectionIn
     name: row.name != null && row.name !== '' ? row.name : row.id,
     cloudUrl: row.cloudUrl ?? null,
     cloudToken: row.cloudToken ?? null,
+    uploadUrl: row.uploadUrl ?? null,
     webhookUrl: row.webhookUrl ?? null,
     webhookToken: row.webhookToken ?? null,
   };
@@ -98,6 +99,7 @@ export class ConnectionStore {
       webhookToken: null,
       cloudUrl: null,
       cloudToken: null,
+      uploadUrl: null,
       createdAt: Date.now(),
     };
     this.writeIndex(channel, [...this.readIndex(channel), row]);
@@ -110,7 +112,7 @@ export class ConnectionStore {
     patch: Partial<
       Pick<
         ConnectionIndexEntry,
-        'enabled' | 'webhookUrl' | 'webhookToken' | 'cloudUrl' | 'cloudToken' | 'name'
+        'enabled' | 'webhookUrl' | 'webhookToken' | 'cloudUrl' | 'cloudToken' | 'uploadUrl' | 'name'
       >
     >,
   ): ConnectionIndexEntry {

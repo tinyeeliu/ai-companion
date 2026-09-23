@@ -15,6 +15,11 @@ export interface Connection {
   webhookToken: string | null;
   cloudUrl: string | null;
   cloudToken: string | null;
+  /**
+   * Media presign endpoint learned from the cloud's `hello`, or null when the
+   * server advertised none. Read-only in the UI: it is never typed by hand.
+   */
+  uploadUrl: string | null;
   /** Live cloud reverse-WSS state: off | connecting | connected | retrying | rejected. */
   cloudStatus: string;
   /** Set only after a 4401 rejection, until the link is saved again. */

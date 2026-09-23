@@ -18,6 +18,7 @@ import {
 } from './types';
 import { compactProfile, type ChannelProfile } from './types';
 import { baileysFactory } from './whatsapp';
+import { createMediaUploader } from './mediaUpload';
 import { postWebhook, type FetchLike } from './webhook';
 import { CloudLink } from './cloud/link';
 import {
@@ -136,6 +137,7 @@ export class ConnectionManager {
       webhookToken: row.webhookToken,
       cloudUrl: row.cloudUrl,
       cloudToken: row.cloudToken,
+      uploadUrl: row.uploadUrl,
       cloudStatus: cloud.status,
       cloudError: cloud.error,
       uptimeMs,
@@ -446,6 +448,13 @@ export class ConnectionManager {
     };
 
     return {
+      // Direct-to-storage upload (1B) when the link learned a presign endpoint.
+      // The endpoint and token are read per call so a reconnect or a token
+      // rotation takes effect on the next message without rebuilding the session.
+      uploadMedia: createMediaUploader({
+        endpoint: () => this.store.get(id)?.uploadUrl ?? '',
+        token: () => this.store.get(id)?.cloudToken ?? '',
+      }),
       onQr: (qr: string) => {
         const live = this.live.get(id);
         if (live == null) return;
@@ -577,6 +586,15 @@ export class ConnectionManager {
       // The socket accepting a write is not enough to send: an un-acked frame is
       // dropped, so the inbound queue drains on the server's `hello`.
       onOpened: () => transport.notifyReady(),
+      onUploadEndpoint: (url) => {
+        // Learned, never configured. Written only on change so a reconnect does
+        // not rewrite the index file every time, and recorded as '' when the
+        // server advertised none so a link that loses the endpoint (a rollback,
+        // another environment) stops trying to use a stale one.
+        const current = this.store.get(id);
+        if (current == null || (current.uploadUrl ?? '') === url) return;
+        this.store.update(id, { uploadUrl: url === '' ? null : url });
+      },
       queueSend: (name, args) => {
         const current = this.store.get(id);
         if (current == null) return null;

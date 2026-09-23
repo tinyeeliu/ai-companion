@@ -93,6 +93,12 @@ export interface ConnectionIndexEntry {
   webhookToken: string | null;
   cloudUrl: string | null;
   cloudToken: string | null;
+  /**
+   * Media presign endpoint the cloud advertised on its last `hello`. Learned,
+   * not configured: the Companion posts here to get an R2 PUT url and uploads
+   * media directly, and falls back to sending bytes inline while it is absent.
+   */
+  uploadUrl: string | null;
   createdAt: number;
 }
 
@@ -127,6 +133,11 @@ export interface ConnectionView {
   webhookToken: string | null;
   cloudUrl: string | null;
   cloudToken: string | null;
+  /**
+   * Media presign endpoint learned from the cloud's `hello`, or null when it
+   * advertised none (the link then uploads media inline).
+   */
+  uploadUrl: string | null;
   /** Live cloud-link state; `off` when no url/token is configured. */
   cloudStatus: CloudStatus;
   /** Set only after a `4401` rejection, until the link is saved again. */

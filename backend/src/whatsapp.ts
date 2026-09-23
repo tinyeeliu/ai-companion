@@ -1,10 +1,43 @@
-import makeWASocket, { useMultiFileAuthState, type WAMessage, type WASocket } from '@whiskeysockets/baileys';
+import makeWASocket, {
+  downloadMediaMessage,
+  useMultiFileAuthState,
+  type BaileysEventMap,
+  type WAMessage,
+  type WASocket,
+} from '@whiskeysockets/baileys';
+import { createHash } from 'node:crypto';
 import type { ChannelFactory, ChannelSession, SessionHooks } from './channel';
 import { mapDisconnect } from './disconnect';
 import { compactProfile, DEDUPE_MAX, LOGOUT_TIMEOUT_MS, type ChannelProfile } from './types';
 import { logJson } from './log';
 
 export type { ChannelFactory, ChannelSession, SessionHooks };
+
+/** Message kinds whose plaintext the cloud needs; every other kind stays vendor-only. */
+const MEDIA_KINDS = new Set(['image', 'video', 'audio', 'document']);
+
+/** Largest plaintext file attached to one message. */
+export const COMPANION_MEDIA_MAX_BYTES = 4 * 1024 * 1024;
+
+/**
+ * Largest plaintext total attached to one `messages.upsert` frame. An album
+ * shares a frame, and the server's websocket payload limit applies per frame,
+ * so the per-file cap alone cannot bound it.
+ */
+export const COMPANION_FRAME_MEDIA_BUDGET_BYTES = 6 * 1024 * 1024;
+
+/** Decrypted plaintext for one media message, attached beside `key` / `message`. */
+export interface CompanionMediaBlock {
+  /** Decrypted plaintext, when it travels inline (1A). */
+  bytes?: Uint8Array;
+  /** Stored object url, when the Companion uploaded it itself (1B). */
+  url?: string;
+  mimetype?: string;
+  /** SHA-256 of `bytes`, base64url without padding. */
+  sha256: string;
+  /** Plaintext byte count. */
+  length: number;
+}
 
 interface SocketEntry {
   sock: WASocket;
@@ -122,6 +155,167 @@ export function messageType(msg: WAMessage): string {
   if (key == null) return 'unknown';
   return key.replace(/Message$/, '').toLowerCase();
 }
+
+/** Payload names a decrypted media block can come from, in proto order. */
+const MEDIA_PROTO_KEYS = ['imageMessage', 'videoMessage', 'audioMessage', 'documentMessage'];
+
+/** The inner proto of a media message, or null when the kind carries none. */
+function mediaProto(msg: WAMessage): Record<string, unknown> | null {
+  const raw = msg.message as Record<string, unknown> | null | undefined;
+  if (raw == null) return null;
+  const inner = unwrapContent(raw);
+  for (const key of MEDIA_PROTO_KEYS) {
+    const value = inner[key];
+    if (value != null && typeof value === 'object') return value as Record<string, unknown>;
+  }
+  return null;
+}
+
+/** Inner proto `mimetype`; it is what the cloud turns into a file extension. */
+function mediaMimetype(msg: WAMessage): string | undefined {
+  const mimetype = mediaProto(msg)?.['mimetype'];
+  return typeof mimetype === 'string' && mimetype !== '' ? mimetype : undefined;
+}
+
+/** Proto numbers arrive as `number`, a numeric string, or a Long. */
+function protoNumber(value: unknown): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  if (value != null && typeof value === 'object') {
+    const toNumber = (value as { toNumber?: unknown }).toNumber;
+    if (typeof toNumber === 'function') {
+      const parsed = (toNumber as () => number).call(value);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+  }
+  return null;
+}
+
+/** Declared plaintext length of a media message, known before decrypting it. */
+function declaredMediaLength(msg: WAMessage): number | null {
+  return protoNumber(mediaProto(msg)?.['fileLength']);
+}
+
+/**
+ * Fetches and decrypts one media message's plaintext.
+ *
+ * Null means "no media to ship": the blob could not be fetched or decrypted (an
+ * expired CDN url is recovered through `reuploadRequest`, which only the live
+ * socket can ask for) or it came back empty. The caller then forwards the
+ * message without a block and the cloud skips it.
+ */
+async function downloadMediaBytes(sock: WASocket, msg: WAMessage): Promise<Uint8Array | null> {
+  try {
+    const ctx: DownloadContext = {
+      logger: baileysLogger() as unknown as DownloadContext['logger'],
+      reuploadRequest: (message) => sock.updateMediaMessage(message),
+    };
+    const buffer = await downloadMediaMessage(msg, 'buffer', {}, ctx);
+    if (buffer == null || buffer.byteLength === 0) return null;
+    return new Uint8Array(buffer);
+  } catch (error) {
+    console.warn('[companion][websocket][error] WhatsApp media decrypt failed', {
+      id: msg.key?.id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
+export interface CompanionMediaPlan {
+  /** The block to attach, or null when this message ships without its media. */
+  block: CompanionMediaBlock | null;
+  /** Frame budget left after this message. */
+  remaining: number;
+}
+
+/**
+ * Decides whether one message's media ships with the frame, and builds its block.
+ *
+ * Two ways it can ship:
+ * - `upload` (1B): the bytes go straight to the cloud's storage and the block
+ *   carries a url. The frame budget is untouched, since nothing rides the frame.
+ * - inline (1A): the bytes ride in the block, bounded by the per-file cap and the
+ *   frame budget.
+ *
+ * The caps are checked smallest-first so a huge album cannot be pulled down just
+ * to be discarded: the declared proto length is known before any download, then
+ * the real length after it. `decrypt` and `upload` are injected so these rules
+ * are testable without a live WhatsApp session.
+ */
+export async function attachCompanionMedia(options: {
+  kind: string;
+  /** Proto `fileLength`, known before the download. */
+  declaredLength: number | null;
+  /** Plaintext bytes still allowed in this frame. */
+  remaining: number;
+  mimetype?: string;
+  decrypt: () => Promise<Uint8Array | null>;
+  /** Direct-to-storage upload; absent when the link has no presign endpoint. */
+  upload?: (bytes: Uint8Array, mimetype: string) => Promise<{ url: string } | null>;
+}): Promise<CompanionMediaPlan> {
+  const { kind, declaredLength, remaining, decrypt, upload } = options;
+  if (!MEDIA_KINDS.has(kind)) return { block: null, remaining };
+  // Without an uploader the budget is spent by the bytes themselves, so a batch
+  // that cannot fit can be rejected before the download.
+  if (upload == null) {
+    if (remaining <= 0) return { block: null, remaining };
+    if (declaredLength != null && declaredLength > remaining) {
+      console.warn('[companion][websocket] WhatsApp media over the frame budget, not decrypted', {
+        kind,
+        length: declaredLength,
+        remaining,
+      });
+      return { block: null, remaining };
+    }
+  }
+
+  const bytes = await decrypt();
+  if (bytes == null || bytes.byteLength === 0) return { block: null, remaining };
+  if (bytes.byteLength > COMPANION_MEDIA_MAX_BYTES) {
+    console.warn('[companion][websocket] WhatsApp media over the per-file cap, not attached', {
+      kind,
+      length: bytes.byteLength,
+    });
+    return { block: null, remaining };
+  }
+
+  const mimetype = options.mimetype ?? 'application/octet-stream';
+  const sha256 = createHash('sha256').update(bytes).digest('base64url');
+  if (upload != null) {
+    const uploaded = await upload(bytes, mimetype);
+    if (uploaded != null && uploaded.url !== '') {
+      return {
+        block: { url: uploaded.url, mimetype, sha256, length: bytes.byteLength },
+        remaining,
+      };
+    }
+    // Fall through to inline: an upload that failed must not cost the message.
+  }
+
+  if (bytes.byteLength > remaining) {
+    console.warn('[companion][websocket] WhatsApp media over the frame budget, not attached', {
+      kind,
+      length: bytes.byteLength,
+      remaining,
+    });
+    return { block: null, remaining };
+  }
+  return {
+    block: {
+      bytes,
+      mimetype,
+      sha256,
+      length: bytes.byteLength,
+    },
+    remaining: remaining - bytes.byteLength,
+  };
+}
+
+type DownloadContext = NonNullable<Parameters<typeof downloadMediaMessage>[3]>;
 
 const silent = (): void => undefined;
 
@@ -320,52 +514,87 @@ class BaileysSession implements ChannelSession {
       });
       this.hooks.onVendorEvent?.('messages.upsert', upsert, singleSenderId(upsert.messages));
       if (upsert.type !== 'notify') return;
-      for (const msg of upsert.messages) {
-        try {
-          if (msg.key?.fromMe === true) continue;
-          const remote = msg.key?.remoteJid ?? '';
-          if (remote === 'status@broadcast') continue;
-          const id = msg.key?.id ?? '';
-          if (id === '') {
-            console.error('[companion][websocket][unexpected] WhatsApp message has no id', msg);
-            continue;
-          }
-          if (this.seen.has(id)) continue;
-          this.seen.add(id);
-          if (this.seen.size > DEDUPE_MAX) {
-            const first = this.seen.values().next().value;
-            if (first != null) this.seen.delete(first);
-          }
-          const text = unwrapConversation(msg);
-          const type = messageType(msg);
-          const from = senderPhoneFromKey(msg.key) ?? '';
-          const to = this.currentPhone ?? '';
-          const timestamp = Number(msg.messageTimestamp ?? 0) * 1000;
-          if (type === 'unknown') {
-            console.error('[companion][websocket][unexpected] Unsupported WhatsApp message', {
-              id,
-              keys: Object.keys((msg.message as Record<string, unknown> | null) ?? {}),
-            });
-          }
-          const inbound = {
-            id,
-            from,
-            to,
-            ...(text == null ? {} : { text }),
-            type,
-            timestamp,
-            raw: msg,
-          };
-          if (this.hooks.onInboundMessage != null) {
-            this.hooks.onInboundMessage(inbound);
-          } else if (text != null) {
-            this.hooks.onInboundText({ ...inbound, text });
-          }
-        } catch (error) {
-          console.error('[companion][websocket][error] Failed to process WhatsApp message', error);
-        }
-      }
+      // Decrypting is async and can be slow, so the batch is handled off the
+      // socket callback; each message keeps its own try/catch below.
+      void this.forwardUpsert(entry, upsert);
     });
+  }
+
+  /**
+   * Decrypts any media and forwards one upsert batch to the hooks.
+   *
+   * Media is decrypted in arrival order so the frame budget is deterministic: a
+   * batch is one frame, and the server's payload limit applies to the frame
+   * rather than to each file. A message that does not fit the budget — or whose
+   * blob cannot be decrypted — ships without a block, and the cloud skips it
+   * exactly as it did before.
+   */
+  private async forwardUpsert(
+    entry: SocketEntry,
+    upsert: BaileysEventMap['messages.upsert'],
+  ): Promise<void> {
+    let mediaBudget = COMPANION_FRAME_MEDIA_BUDGET_BYTES;
+    for (const msg of upsert.messages) {
+      if (this.entry !== entry) return;
+      try {
+        if (msg.key?.fromMe === true) continue;
+        const remote = msg.key?.remoteJid ?? '';
+        if (remote === 'status@broadcast') continue;
+        const id = msg.key?.id ?? '';
+        if (id === '') {
+          console.error('[companion][websocket][unexpected] WhatsApp message has no id', msg);
+          continue;
+        }
+        if (this.seen.has(id)) continue;
+        this.seen.add(id);
+        if (this.seen.size > DEDUPE_MAX) {
+          const first = this.seen.values().next().value;
+          if (first != null) this.seen.delete(first);
+        }
+        const text = unwrapConversation(msg);
+        const type = messageType(msg);
+        const from = senderPhoneFromKey(msg.key) ?? '';
+        const to = this.currentPhone ?? '';
+        const timestamp = Number(msg.messageTimestamp ?? 0) * 1000;
+        if (type === 'unknown') {
+          console.error('[companion][websocket][unexpected] Unsupported WhatsApp message', {
+            id,
+            keys: Object.keys((msg.message as Record<string, unknown> | null) ?? {}),
+          });
+        }
+        if (MEDIA_KINDS.has(type)) {
+          const mimetype = mediaMimetype(msg);
+          const plan = await attachCompanionMedia({
+            kind: type,
+            declaredLength: declaredMediaLength(msg),
+            remaining: mediaBudget,
+            ...(mimetype == null ? {} : { mimetype }),
+            decrypt: () => downloadMediaBytes(entry.sock, msg),
+            ...(this.hooks.uploadMedia == null ? {} : { upload: this.hooks.uploadMedia }),
+          });
+          mediaBudget = plan.remaining;
+          if (plan.block != null) {
+            (msg as unknown as Record<string, unknown>)['media'] = plan.block;
+          }
+        }
+        const inbound = {
+          id,
+          from,
+          to,
+          ...(text == null ? {} : { text }),
+          type,
+          timestamp,
+          raw: msg,
+        };
+        if (this.hooks.onInboundMessage != null) {
+          this.hooks.onInboundMessage(inbound);
+        } else if (text != null) {
+          this.hooks.onInboundText({ ...inbound, text });
+        }
+      } catch (error) {
+        console.error('[companion][websocket][error] Failed to process WhatsApp message', error);
+      }
+    }
   }
 }
 

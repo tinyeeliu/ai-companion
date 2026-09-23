@@ -394,6 +394,14 @@ import { tip } from './tooltip';
                   oninput={() => (cloudDirty = true)}
                 />
               </label>
+              <!-- Learned from the server's hello, never entered here: read-only
+                   so a typo can never break uploads. Showing "not offered" means
+                   media travels inline in the frame. -->
+              <label class="field">
+                {$tr('detail.uploadUrl')}
+                <input value={connection.uploadUrl ?? $tr('detail.uploadUrlNone')} readonly />
+              </label>
+              <p class="note">{$tr('detail.uploadUrlHint')}</p>
               {#if !cloudConnected}
                 <div class="row">
                   <button
