@@ -1,5 +1,6 @@
 import type { DisconnectReasonName } from './types';
 import type { ChannelProfile } from './types';
+import type { SessionMediaCache } from './media/cache';
 
 export type Channel = 'whatsapp' | 'line';
 
@@ -43,6 +44,15 @@ export interface SessionHooks {
    * failed). Null is not an error: the caller sends the bytes inline instead.
    */
   uploadMedia?: (bytes: Uint8Array, mimetype: string) => Promise<{ url: string } | null>;
+  /**
+   * Local media cache for this connection, when the host wired one.
+   *
+   * A channel uses it to skip work it has already done: serving an inbound
+   * repeat without decrypting again, and letting an outbound send reuse bytes or
+   * the proto WhatsApp already accepted. Absent means every media message takes
+   * the uncached path, which is exactly the old behaviour.
+   */
+  mediaCache?: SessionMediaCache;
 }
 
 export interface ChannelSession {

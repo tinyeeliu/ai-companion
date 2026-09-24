@@ -296,6 +296,7 @@ describe('CloudLink event frames', () => {
         profile: () => ({
           account: '15551367394',
           userId: '15551367394:7@s.whatsapp.net',
+          lid: '12799723978969:7@lid',
           phone: '15551367394',
           displayName: 'Pete Liu',
         }),
@@ -314,6 +315,9 @@ describe('CloudLink event frames', () => {
       profile: {
         account: '15551367394',
         userId: '15551367394:7@s.whatsapp.net',
+        // The account's own LID rides the hello so the cloud can recognise an
+        // `@lid` mention of the linked account (WhatsApp privacy addressing).
+        lid: '12799723978969:7@lid',
         phone: '15551367394',
         displayName: 'Pete Liu',
       },

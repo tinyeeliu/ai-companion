@@ -19,6 +19,8 @@ import {
 import { compactProfile, type ChannelProfile } from './types';
 import { baileysFactory } from './whatsapp';
 import { createMediaUploader } from './mediaUpload';
+import { ConnectionMediaCache } from './media/cache';
+import type { MediaCacheStore } from './media/store';
 import { postWebhook, type FetchLike } from './webhook';
 import { CloudLink } from './cloud/link';
 import {
@@ -94,6 +96,12 @@ export class ConnectionManager {
     readonly fetchFn: FetchLike = fetch,
     readonly lineFactory: ChannelFactory = linejsFactory,
     readonly messages: MessageStore = MessageStore.memory(),
+    /**
+     * Local media cache, when the host gave the manager a data dir. Null keeps
+     * every media message on the uncached path, which is what an embedding with
+     * nowhere to write — and every test that does not care — wants.
+     */
+    readonly media: MediaCacheStore | null = null,
   ) {}
 
   async restoreEnabled(): Promise<void> {
@@ -217,6 +225,14 @@ export class ConnectionManager {
     this.dropQueues(id);
     await this.stop(id, { logout: true });
     this.messages.deleteForConnection(id);
+    // The cache is keyed per connection, so unlinking is the whole cleanup: a
+    // blob another connection still references stays, because it is addressed by
+    // its own content rather than by who fetched it.
+    try {
+      this.media?.deleteForConnection(id);
+    } catch (error) {
+      console.warn('[companion] media cache cleanup failed', id, error);
+    }
     this.store.remove(id);
     this.live.delete(id);
   }
@@ -455,6 +471,10 @@ export class ConnectionManager {
         endpoint: () => this.store.get(id)?.uploadUrl ?? '',
         token: () => this.store.get(id)?.cloudToken ?? '',
       }),
+      // A fresh view per session: the store is shared, but every lookup is scoped
+      // to this connection, so one linked account can never be handed another's
+      // url. Rebuilding it on reconnect costs nothing and keeps the scope honest.
+      ...(this.media == null ? {} : { mediaCache: new ConnectionMediaCache(this.media, id) }),
       onQr: (qr: string) => {
         const live = this.live.get(id);
         if (live == null) return;

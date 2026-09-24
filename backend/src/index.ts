@@ -1,6 +1,7 @@
 import { createApp } from './app';
 import { ConnectionManager } from './manager';
 import { MessageStore, PRUNE_INTERVAL_MS, messagesPath } from './messages';
+import { MEDIA_PRUNE_INTERVAL_MS, MediaCacheStore, mediaDir, mediaPath } from './media/store';
 import { linejsFactory } from './line';
 import { dataDir, ensureDir, listenPort } from './paths';
 import { ConnectionStore } from './store';
@@ -21,12 +22,25 @@ setInterval(() => {
     console.warn('[companion] prune failed', error);
   }
 }, PRUNE_INTERVAL_MS);
+// One file and one folder, separate from `messages.sqlite` on purpose: the cache
+// is regenerable, so clearing it is `rm -rf data/media data/media.sqlite` and can
+// never touch the durable delivery queue.
+const media = new MediaCacheStore(mediaPath(root), mediaDir(root));
+media.prune();
+setInterval(() => {
+  try {
+    media.prune();
+  } catch (error) {
+    console.warn('[companion] media prune failed', error);
+  }
+}, MEDIA_PRUNE_INTERVAL_MS);
 const manager = new ConnectionManager(
   new ConnectionStore(root),
   baileysFactory,
   fetch,
   linejsFactory,
   messages,
+  media,
 );
 await manager.restoreEnabled();
 

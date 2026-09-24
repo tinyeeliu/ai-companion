@@ -36,6 +36,10 @@ Tauri (package/)  →  bun sidecar (backend/)  →  Baileys WhatsApp socket
 | `backend/src/line.ts` | Only `@evex/linejs` import |
 | `backend/src/store.ts` | `data/whatsapp` and `data/line` files |
 | `backend/src/messages.ts` | SQLite `ChatMessage` history (7 days) and the delivery queue |
+| `backend/src/media/sha.ts` | SHA-256 dialects, canonicalized to one identity |
+| `backend/src/media/store.ts` | SQLite `MediaObject` / `MediaUrl` meta + the blob folder |
+| `backend/src/media/cache.ts` | One connection's view of the cache; Baileys' `mediaCache` |
+| `backend/src/media/outbound.ts` | Which cached media source an outbound send should use |
 | `backend/src/log.ts` | Structured JSON logging with binary-value redaction |
 | `backend/src/cloud/protocol.ts` | Channel-agnostic WSS frames |
 | `backend/src/cloud/link.ts` | Per-connection outbound WSS client |
@@ -56,9 +60,46 @@ data/line/{id}/meta.json
 data/line/{id}/auth/storage.json  # LINEJS FileStorage (E2EE keys)
 data/line/{id}/auth/token         # LINE auth token; never logged
 data/messages.sqlite              # ChatMessage: history log + durable delivery queue
+data/media.sqlite                 # MediaObject / MediaUrl: the media cache meta
+data/media/{sha256}.{ext}         # cached plaintext, content-addressed
 ```
 
 Inbound and outbound chat is stored in SQLite table `"ChatMessage"` for 7 days. Prune runs at boot and every 24 hours. Dashboard Received/Sent counters stay as lifetime totals in `meta.json`: Received increments on every vendor inbound message, Sent increments on every outbound queue write — a dashboard `POST /connection/:id/message` and a cloud `sendMessage`/`sendCompactMessage` invoke alike.
+
+`data/media.sqlite` and `data/media/` are the media cache, deliberately separate from
+`messages.sqlite`: the cache is regenerable, so clearing it is
+`rm -rf data/media data/media.sqlite` and can never touch a queued message. See
+[Media cache](CloudServer.md#media-cache) for the wire contract.
+
+## Media cache
+
+The session runs on this laptop, so the same bytes cross it twice: inbound WhatsApp media is
+decrypted from the CDN, and outbound cloud media is fetched from object storage and
+re-encrypted up to WhatsApp. A repeat costs nothing instead.
+
+- Plaintext is stored content-addressed under `data/media/{sha256}.{ext}`, so one file has one
+  file on disk. Meta — length, mime, the encoded proto, and every url that points at the
+  content — lives in `media.sqlite` tables `"MediaObject"` and `"MediaUrl"`.
+- Rows are scoped per connection, so a url learned on one linked account is never handed to
+  another. The blob folder is shared, because a file named by its own digest is the same file
+  whoever fetched it.
+- WhatsApp’s `fileSha256` is the inbound key, so a repeat is recognised **before** anything is
+  fetched and served from cache (a fresh url, a re-upload, or inline bytes).
+- The received media proto is kept too, not only the bytes. It still points at WhatsApp’s blob
+  and still carries its `mediaKey`, so a reply naming that digest references the copy WhatsApp
+  already holds: no download, no upload. Outbound, the cloud’s `sha256` hint or the url
+  identifies the content, and Baileys’ own `mediaCache` is handed the stored proto.
+- A stored proto carries the expiry WhatsApp declared for its blob — the `oe` parameter of the
+  CDN url, falling back to `mediaKeyTimestamp` plus the observed lifetime. Past it the proto is
+  a miss and the send re-uploads from the local plaintext, which still costs no download; a
+  proto that declared no expiry keeps a conservative 24 hours.
+- Content flows both ways through the single digest key: media the bot sent and the user
+  echoes back is the same cache entry.
+- A digest that disagrees with its bytes is discarded — the bytes win and the mismatch is
+  logged — because a wrong digest would let one file’s bytes answer for another’s.
+- Objects retire after a year of disuse — long enough to outlive the blob they point at — and
+  the cache is capped at 2,000 objects / 512 MB, evicted least-recently-used first. Prune runs
+  at boot and hourly.
 
 ## Message queue
 

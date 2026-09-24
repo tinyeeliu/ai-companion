@@ -258,9 +258,24 @@ Companion writes the send to disk and answers immediately. The `result` is a que
 }
 ```
 
-Three other Baileys methods are allowed, and they run immediately rather than through the queue: `relayMessage`, `readMessages`, and `sendPresenceUpdate`. Anything else comes back as `METHOD_NOT_ALLOWED`.
+Four other Baileys methods are allowed, and they run immediately rather than through the queue: `relayMessage`, `readMessages`, `sendPresenceUpdate`, and `prepareMedia`. `prepareMedia` uploads media to WhatsApp and hands you the result, which is how an interactive message with an image header, or a media carousel card, gets built — only the process holding the socket can upload. Anything else comes back as `METHOD_NOT_ALLOWED`.
 
 The local `POST /message` with `{ "to", "text" }` is the same send, written for a dashboard or a script. Companion turns that into `sendMessage` for you. Use `invoke` when your server already speaks Baileys' arguments.
+
+### Group chats
+
+Group messages arrive like one-to-one messages. `key.remoteJid` is the group JID, which ends in `@g.us`, and the sender is `key.participant`. Under WhatsApp's newer privacy addressing the phone number sits on `key.participantAlt` instead, and Companion prefers it, so `userId` stays a phone number either way.
+
+To send to a group, address the group. The local `POST /message` keeps a `to` that already carries an `@` as it is, rather than reducing it to a phone number:
+
+```bash
+curl -s "$BASE/connection/CONNECTION_ID/message" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"to":"120363412973586464@g.us","text":"See you at six"}'
+```
+
+The `sendMessage` invoke takes the same value as its first argument.
 
 ### LINE (LINEJS)
 
@@ -325,11 +340,55 @@ The queued ack is LINEJS' id field, filled with Companion's id until LINE accept
 
 `sendCompactMessage` is the only LINE method on the socket. A text send from `POST /message` calls that same method. The `to` value is the mid, and Companion does not strip characters from it.
 
+## Media
+
+Photos, video, audio, and documents a user sends are decrypted once and kept on this computer. Each one is named by the SHA-256 of its plaintext, so the same file is one entry however many times it arrives.
+
+```mermaid
+flowchart LR
+  wa[WhatsApp sends a photo]
+  cache["Local cache, keyed by sha256"]
+  reply[Your reply names the media]
+  out["Companion reuses WhatsApp's copy"]
+  wa --> cache
+  cache --> reply
+  reply --> out
+```
+
+That is what makes a repeat cheap. Name the media by its digest and Companion reuses the copy WhatsApp already holds, so the same picture goes out again with no download and no upload. It is the ordinary `sendMessage` content, with the digest beside the url:
+
+```json
+{
+  "v": 1,
+  "type": "invoke",
+  "id": "send-3",
+  "connectionId": "home",
+  "channel": "whatsapp",
+  "name": "sendMessage",
+  "data": {
+    "args": [
+      "15551234002@s.whatsapp.net",
+      {
+        "image": { "url": "https://storage.example.com/temp/…jpeg", "sha256": "…" },
+        "caption": "Here it is"
+      }
+    ]
+  }
+}
+```
+
+The digest is base64url without padding. When Companion has that content it reuses the WhatsApp copy; when it does not, it fetches the url once and keeps the result. Either way you never ship the bytes yourself.
+
+Two things to know. WhatsApp serves a media blob for about a month and then collects it; that expiry is recorded next to the cached copy, so a reply after it re-uploads from the local file, which still costs you no download. And the cache is a regenerable copy under the app's data folder, so clearing it costs nothing but speed.
+
+The `media` block on inbound events, the digest spellings, and the cache layout are in [spec/doc/Architecture.md](spec/doc/Architecture.md) and [spec/doc/CloudServer.md](spec/doc/CloudServer.md).
+
 ## Limits
 
 - Another computer cannot call the API. The listener is `127.0.0.1`.
 - WhatsApp is a linked-device session. LINE is a personal-account session. Companion is not affiliated with Meta or LY Corporation, and it does not use the WhatsApp Business Cloud API or the LINE Official Account API.
 - Message rows are removed after 7 days. The received and sent counters on each phone stay.
+- Cached media is kept for up to a year of disuse, and WhatsApp serves each blob for about a month. The cache is disposable — `data/media.sqlite` and `data/media/` sit beside `config.json`, and removing them never touches a queued message.
 - Release builds are not notarized and not Authenticode-signed.
 
 ## License

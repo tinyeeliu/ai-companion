@@ -66,6 +66,12 @@ export interface ChannelProfile {
   account?: string;
   /** Raw vendor user id when it differs (WhatsApp device jid `123:12@s.whatsapp.net`). */
   userId?: string;
+  /**
+   * The account's LID jid (`123:12@lid`) when the channel has one. WhatsApp's
+   * privacy addressing sends @-mentions and quoted authors as `@lid`, so the
+   * cloud needs this to tell a mention of the linked account from anyone else.
+   */
+  lid?: string;
   /** Digits-only phone number. WhatsApp only — LINE profiles carry no phone. */
   phone?: string;
   /** Public @handle when the channel has one (WhatsApp). */

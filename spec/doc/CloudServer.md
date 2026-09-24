@@ -185,16 +185,35 @@ Events (`name`): `messages.upsert`, `connection.update`. `data` is the raw Baile
 
 Invoke (`name`): `sendMessage`, `relayMessage`, `readMessages`, `sendPresenceUpdate`, `prepareMedia`. `data.args` are the arguments those Baileys socket methods take. Media in `sendMessage` may use `{ image: { url } }` (and peers); Companion’s Baileys session uploads to WhatsApp.
 
+A media object in `sendMessage` may carry a sibling `sha256` — `{ image: { url, sha256 } }` —
+holding the plaintext digest (base64url, no padding) when the server knows it. It is a hint,
+never a requirement, and it is nested inside the media object on purpose: Baileys treats that
+object as an opaque media descriptor and never spreads it into the proto, so the digest
+reaches Companion’s cache without ever reaching WhatsApp. A server that does not know a
+digest simply omits it, and Companion fetches the url once and remembers it by url instead.
+
+A group conversation is addressed by its own JID: `key.remoteJid` ends in `@g.us`, and the
+sender is `key.participant`, preferring the phone JID via `participantAlt` when WhatsApp’s
+privacy addressing moves it there. `userId` is that sender, never the group. To send to a
+group, pass the group JID as the recipient exactly as the frame carried it; a value that
+already carries `@` is used as-is rather than reduced to a phone number.
+
 #### `prepareMedia`
 
 ```json
 { "type": "invoke", "name": "prepareMedia", "data": { "args": ["image", "https://…/temp/abc.jpeg", "image/jpeg"] } }
 ```
 
-`args` are `[kind, url, mimetype?, fileName?]` where `kind` is `image`, `video`, or
+`args` are `[kind, url, mimetype?, fileName?, sha256?]` where `kind` is `image`, `video`, or
 `document`. It downloads the url, uploads the media to WhatsApp, and returns the resulting
 proto (`{ imageMessage: { url, directPath, mediaKey, … } }` and peers) as the `result`
 data.
+
+`sha256` is the plaintext digest, base64url without padding, when the server knows it — see
+[Media cache](#media-cache). The server omits it rather than sending an empty string, so a
+Companion that predates it reads the same four arguments it always did. Supplying it lets the
+Companion answer the upload from a proto WhatsApp already accepted, which costs neither a
+download nor an upload.
 
 It exists because Baileys’ `prepareWAMessageMedia` — the only API that uploads media to
 WhatsApp — needs the socket’s upload function, so it can only run in the process holding
@@ -227,8 +246,9 @@ it. On a `messages.upsert` event each message **may** carry a sibling `media` bl
 
 - The block is a **sibling of `key` / `message`**, not a field of the vendor proto, so
   `messages[]` entries stay valid Baileys messages apart from this one added key.
-- It is emitted only for media the Companion decrypted (`image`, `video`, `audio`,
-  `document`). Absent means "not decrypted": a server must not invent the bytes.
+- It is emitted only for media the Companion could produce plaintext for — freshly decrypted,
+  or served from its local [media cache](#media-cache) without touching the CDN at all.
+  Absent means "no plaintext": a server must not invent the bytes.
 - `bytes` uses the protocol’s `$bin` convention (see [Binary JSON](#binary-json)).
 - `mimetype` is the plaintext mime (the inner proto’s `imageMessage.mimetype` and peers).
 - `sha256` is the hash of the **plaintext**, encoded **base64url without padding**.
@@ -278,6 +298,73 @@ Notes for a server implementing this:
   `bytes` inline, so a client is never worse off than before.
 - A url is only as trustworthy as the server's own object naming. Validate host, path, and
   that the object name embeds the `sha256` before fetching anything.
+
+## Media cache
+
+The session runs on a laptop, so the same bytes cross it twice: inbound WhatsApp media is
+decrypted from the CDN, and outbound cloud media is fetched from object storage and
+re-encrypted up to WhatsApp. A repeat send should cost nothing, so plaintext is kept locally
+and addressed by its own SHA-256.
+
+```
+data/media.sqlite          # meta: length, mime, the accepted proto, every url
+data/media/{sha256}.{ext}  # plaintext, content-addressed
+```
+
+A **separate SQLite file from `messages.sqlite` on purpose.** That file holds the durable
+delivery queue, whose `pending` rows must outlive an offline phone and are not disposable;
+the cache is the opposite. Clearing it is therefore one safe operation —
+`rm -rf data/media data/media.sqlite` — that can never touch a queued message. The blob
+folder is shared across connections (a file named by its own digest is the same file whoever
+fetched it), while every meta row is scoped to one connection, so a url learned on one linked
+account is never handed to another.
+
+Digests are normalized on the way in. WhatsApp’s own `fileSha256` is standard base64 *with*
+padding; everything else here — the cloud’s `sha256`, and the object names under `temp/` — is
+base64url *without* it. One file must have one identity, so both are canonicalized to
+base64url-unpadded, and a value that is not exactly 32 bytes is refused rather than guessed
+at. A digest that disagrees with the bytes it arrived with is discarded: the bytes win, and
+the disagreement is logged.
+
+**Inbound** (`messages.upsert`). The proto’s `fileSha256` identifies the media before
+anything is fetched, so a repeat is answered from the cache — cheapest first:
+
+| Cache state | What the frame gets | Cost |
+| --- | --- | --- |
+| bytes + a stored url inside its TTL | `media: { url, … }` | nothing |
+| bytes, no usable url | re-uploaded to the presign endpoint, `media: { url, … }` | one upload |
+| bytes, no uploader | `media: { bytes, … }` | nothing, bounded by the frame budget |
+| nothing | the normal decrypt, whose result is then cached | one WhatsApp download |
+
+A stored url is only reused while it is fresh (one hour), because uploads land under the
+bucket’s lifecycle-eligible `temp/` prefix; past that the Companion re-uploads from local
+bytes, which still costs no download. A vendor url is recorded too, but only ever as a lookup
+key — it is encrypted, so it can never be handed to a server.
+
+**Outbound** (`sendMessage`, `prepareMedia`). The declared `sha256`, or the url, identifies
+the content, and the cheapest of three paths is taken: a stored proto means Baileys skips
+both the download and the upload; cached bytes are handed to Baileys as a local file, which
+skips the download and captures the new proto; anything else is passed through untouched so
+the send behaves exactly as it did before the cache existed.
+
+The stored proto is the one an upload produced **and** the one a received message arrived
+with. A media proto on `messages.upsert` still points at WhatsApp’s blob and still carries
+its `mediaKey`, so keeping it under the plaintext digest is what lets a reply reference the
+media the user just sent — no download, no upload.
+
+Content flows both ways through the single digest key, which is the point: media the bot sent
+and the user echoes back is recognised as the same file, so the inbound turn needs no download
+and already knows a url.
+
+A proto is reused only while WhatsApp still serves its blob. The deadline is read from the
+CDN url’s `oe` parameter, falling back to the proto’s `mediaKeyTimestamp` plus the observed
+lifetime, so an upload and a received message are both gated on the real expiry; a proto that
+declared none keeps a conservative day. Past it the media is re-uploaded from the local
+plaintext, which still costs no download.
+
+Objects retire after a year of disuse — long enough to outlive the blob they point at — and
+the folder is capped at 2,000 objects and 512 MB, evicted least-recently-used first. Pruning
+runs hourly.
 
 ### `line`
 

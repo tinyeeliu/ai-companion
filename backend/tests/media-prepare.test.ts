@@ -1,4 +1,11 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { proto } from '@whiskeysockets/baileys';
+import { sha256Base64Url } from '../src/media/sha';
+import { ConnectionMediaCache } from '../src/media/cache';
+import { MediaCacheStore, mediaDir, mediaPath } from '../src/media/store';
 import { prepareMediaContent } from '../src/whatsapp';
 import { allowedInvoke, CHANNEL_INVOKE } from '../src/cloud/protocol';
 
@@ -9,6 +16,42 @@ const PNG = Buffer.from(
   'hex',
 );
 
+/** The digest of a header image the cache is primed with. */
+const DIGEST = sha256Base64Url(new Uint8Array([7, 7, 7]));
+
+/** A proto as WhatsApp would have returned it for an accepted upload. */
+function acceptedProto(): Uint8Array {
+  return proto.Message.encode(
+    proto.Message.fromObject({
+      imageMessage: {
+        url: 'https://mmg.whatsapp.net/accepted.enc',
+        directPath: '/v/accepted',
+        mimetype: 'image/png',
+        fileLength: PNG.byteLength,
+        fileSha256: Buffer.from(DIGEST, 'base64url'),
+      },
+    }),
+  ).finish();
+}
+
+/** A proto as it arrives on an inbound message, carrying the locator and key. */
+function inboundProto(sha256: string): Uint8Array {
+  return proto.Message.encode(
+    proto.Message.fromObject({
+      imageMessage: {
+        url: 'https://mmg.whatsapp.net/inbound.enc?oe=6ADCAB3C',
+        directPath: '/v/inbound.enc?oe=6ADCAB3C',
+        mediaKey: Buffer.alloc(32, 1),
+        fileEncSha256: Buffer.alloc(32, 2),
+        fileLength: PNG.byteLength,
+        mediaKeyTimestamp: 1_790_248_346,
+        mimetype: 'image/jpeg',
+        fileSha256: Buffer.from(sha256, 'base64url'),
+      },
+    }),
+  ).finish();
+}
+
 /**
  * `prepareWAMessageMedia` downloads the url itself before it can hash and upload
  * the bytes, so the fixture has to be reachable. A local server keeps the test
@@ -16,11 +59,16 @@ const PNG = Buffer.from(
  */
 let server: ReturnType<typeof Bun.serve>;
 let base = '';
+/** How many times the fixture server was actually asked for its bytes. */
+let served = 0;
 
 beforeAll(() => {
   server = Bun.serve({
     port: 0,
-    fetch: () => new Response(PNG, { headers: { 'content-type': 'image/png' } }),
+    fetch: () => {
+      served += 1;
+      return new Response(PNG, { headers: { 'content-type': 'image/png' } });
+    },
   });
   base = `http://127.0.0.1:${server.port}`;
 });
@@ -77,6 +125,93 @@ describe('prepareMediaContent', () => {
     await expect(prepareMediaContent(fakeSock(), ['sticker', `${base}/s.webp`], stubUpload)).rejects.toThrow(
       'unsupported media kind sticker',
     );
+  });
+
+  test('reuses a stored proto instead of fetching and uploading again', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'companion-prepare-'));
+    const store = new MediaCacheStore(mediaPath(root), mediaDir(root));
+    const cache = new ConnectionMediaCache(store, 'wa-1');
+    // Deliberately unreachable: a cache hit must not touch the network at all.
+    const url = 'http://127.0.0.1:1/never-served.png';
+    cache.rememberUrl({ url, sha256: DIGEST, role: 'stored', kind: 'image' });
+    cache.rememberProto(`image:${url}`, acceptedProto());
+
+    let uploaded = 0;
+    const proto = (await prepareMediaContent(
+      fakeSock(),
+      ['image', url, 'image/png'],
+      (async () => {
+        uploaded += 1;
+        return { url: 'https://mmg.whatsapp.net/uploaded.enc', directPath: '/v/x' };
+      }) as never,
+      cache.baileys,
+    )) as { imageMessage?: { url?: string } };
+
+    expect(uploaded).toBe(0);
+    expect(proto.imageMessage?.url).toBe('https://mmg.whatsapp.net/accepted.enc');
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test('an inbound proto makes the header a pure cache hit', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'companion-prepare-in-'));
+    const store = new MediaCacheStore(mediaPath(root), mediaDir(root));
+    const cache = new ConnectionMediaCache(store, 'wa-1');
+    const bytes = new Uint8Array([5, 5, 5]);
+    const digest = sha256Base64Url(bytes);
+    // What the cloud names in the header invoke: its own stored url for the media
+    // the user just sent, which is what `rememberInboundMedia` recorded.
+    const url = 'https://workspace.example.com/temp/from-inbound.jpeg';
+    cache.putBytes({ sha256: digest, bytes, mime: 'image/jpeg', source: 'in' });
+    cache.rememberUrl({ url, sha256: digest, role: 'stored', kind: 'image' });
+    cache.putProto(digest, inboundProto(digest), { waExpiresAt: Date.now() + 86_400_000 });
+
+    served = 0;
+    let uploaded = 0;
+    const result = (await prepareMediaContent(
+      fakeSock(),
+      ['image', url, 'image/jpeg', null, digest],
+      (async () => {
+        uploaded += 1;
+        return { url: 'https://mmg.whatsapp.net/uploaded.enc', directPath: '/v/x' };
+      }) as never,
+      cache.baileys,
+    )) as { imageMessage?: { url?: string } };
+
+    // Neither half of the round trip happened: WhatsApp's own blob is referenced.
+    expect(served).toBe(0);
+    expect(uploaded).toBe(0);
+    expect(result.imageMessage?.url).toBe('https://mmg.whatsapp.net/inbound.enc?oe=6ADCAB3C');
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test('an expired proto is not reused, so the header is uploaded again', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'companion-prepare-exp-'));
+    const store = new MediaCacheStore(mediaPath(root), mediaDir(root));
+    const cache = new ConnectionMediaCache(store, 'wa-1');
+    const bytes = new Uint8Array([5, 5, 5]);
+    const digest = sha256Base64Url(bytes);
+    // Reachable, because an expired proto means the download really does happen.
+    const url = `${base}/expired.png`;
+    cache.putBytes({ sha256: digest, bytes, mime: 'image/png', source: 'in' });
+    cache.rememberUrl({ url, sha256: digest, role: 'stored', kind: 'image' });
+    cache.putProto(digest, inboundProto(digest), { waExpiresAt: Date.now() - 1 });
+
+    served = 0;
+    let uploaded = 0;
+    await prepareMediaContent(
+      fakeSock(),
+      ['image', url, 'image/png', null, digest],
+      (async () => {
+        uploaded += 1;
+        return { url: 'https://mmg.whatsapp.net/uploaded.enc', directPath: '/v/x' };
+      }) as never,
+      cache.baileys,
+    );
+
+    // A dead blob must cost a fresh upload rather than producing a dead message.
+    expect(served).toBe(1);
+    expect(uploaded).toBeGreaterThan(0);
+    rmSync(root, { recursive: true, force: true });
   });
 });
 
