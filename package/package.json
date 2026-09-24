@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "bun": ">=1.4.2"
+  },
   "scripts": {
     "prepare-sidecar": "test -x tauri/binaries/companion-server-aarch64-apple-darwin || (cp tauri/binaries/companion-server.sh tauri/binaries/companion-server-aarch64-apple-darwin && chmod +x tauri/binaries/companion-server-aarch64-apple-darwin)",
     "tauri": "tauri",

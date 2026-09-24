@@ -77,6 +77,10 @@ say "Building frontend"
 
 say "Compiling backend sidecar for $TAURI_TARGET"
 mkdir -p "$BINARIES_DIR"
+# Do NOT add --bytecode here. The sidecar entry uses top-level await
+# (`await manager.restoreEnabled()` in backend/src/index.ts), and Bun's bytecode
+# compiler rejects top-level await with `"await" can only be used inside an
+# "async" function`, failing the build. Verified failing on bun 1.4.2.
 (cd "$BACKEND_DIR" && bun build --compile src/index.ts --outfile "$SIDECAR")
 chmod +x "$SIDECAR"
 
