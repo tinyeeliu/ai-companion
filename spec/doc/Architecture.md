@@ -18,7 +18,7 @@ Tauri (package/)  →  bun sidecar (backend/)  →  Baileys WhatsApp socket
 ```
 
 - Bind: `127.0.0.1` only.
-- Token: first boot writes `data/config.json`. Header `Authorization: Bearer <token>` on every `/api/v1/im/*` route except `GET /api/v1/im/health`.
+- Token: first boot writes `data/config.json`. Header `Authorization: Bearer <token>` on every `/api/v1/im/*` route except `GET /api/v1/im/health`. `POST /api/v1/im/test.json` is also open when the process is the local dev server on port 38000. The packaged app on 38888 still requires the bearer.
 - Access: localhost only. Other computers cannot call the API unless the bind address,
   firewall, and authentication model are deliberately changed.
 - Data: `COMPANION_DATA_DIR` or `companion/data` (packaged / default). Installed app uses Application Support. `scripts/run.sh` uses `COMPANION_DATA_DIR` when set, else the Application Support dir when it exists, else `companion/data-dev`.
@@ -153,6 +153,7 @@ are not messages and still run inline.
 | GET | `/api/v1/im/connection/:id/messages.json` |
 | GET | `/api/v1/im/connection/:id/messages/:messageId.json` |
 | POST | `/api/v1/im/replay.json` |
+| POST | `/api/v1/im/test.json` |
 | PUT | `/api/v1/im/connection/:id.json` |
 | PUT | `/api/v1/im/connection/:id/webhook.json` |
 | PUT | `/api/v1/im/connection/:id/cloud.json` |
@@ -186,6 +187,8 @@ Each connection stores `cloudUrl` / `cloudToken` on the same index as `webhookUr
 WhatsApp `to` is digits with country code. LINE `to` is a mid (for example `u…`) and is not stripped.
 
 `POST /replay.json` is a debug helper for the cloud pipe and is deliberately not connection-scoped: both ids travel in the body as `{ "connectionId": "…", "messageId": 1 }`. It re-frames a received row's stored payload exactly as the worker forwarded it the first time (`messages.upsert` for WhatsApp, `message` for LINE) and writes it straight onto the open cloud link. It is **not** a retry: nothing is re-queued and the row's `status`, `error_count` and `last_error` are untouched, so the cloud simply receives the same event again. Only `direction: "in"` rows can be replayed, and it answers `{ "ok": true, "messageId": "…", "name": "messages.upsert", "userId": "…" }`. Errors: `400 INVALID_PARAM` (missing `connectionId`, or a `messageId` that is not a positive integer), `404 NOT_FOUND` (unknown connection or message), `409 INVALID_STATE` (the row is outbound, or it has no stored payload), `409 NOT_CONNECTED` (the cloud link is not open).
+
+`POST /test.json` injects one cloud frame onto the first **open** link for `channel` and waits for the frames that come back down. Body: `{ "channel": "whatsapp", "payload": { "v": 1, "type": "event", … }, "maxResponse"?: 1, "maxWait"?: 10, "skipReply"?: true, "traceId"?: "…" }`. `payload` is the frame itself. `connectionId` and `channel` are rewritten onto the live link before send. The response is a JSON array of `invoke` and `error` frames (`hello`, `ping`, and `pong` are ignored). Collection stops at `maxResponse` frames (default 1) or after `maxWait` seconds (default 10, at most 120), whichever comes first, and returns whatever arrived. `skipReply` defaults to `true`: each invoke is acked with `{ "skipped": true }` and is not run on the phone. `skipReply: false` runs the real session path. `traceId`, when set, is stamped on the frame so the cloud debug folder is that name. Only one call may run at a time. A wait that ends with no `invoke` or `error` is `408 TIMEOUT`. On port 38000 the route does not check the bearer; on 38888 it does. A WhatsApp upsert with no `key.id` is dropped by IMG, so nothing comes back. Each test send replaces `key.id`, so repeating the same body is not deduped. Errors: `400 INVALID_PARAM`, `409 NOT_CONNECTED` (no open link for the channel), `409 TEST_IN_PROGRESS`.
 
 Connection views expose `phone` as the account id (WhatsApp number or LINE mid) and `user` as the display name when the channel provides one.
 

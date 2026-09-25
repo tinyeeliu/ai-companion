@@ -78,7 +78,7 @@ export function createApp(options: AppOptions): Hono {
 
   app.onError((err, c) => {
     if (err instanceof HttpError) {
-      return c.json(jsonError(err), err.status as 400 | 401 | 404 | 409 | 500);
+      return c.json(jsonError(err), err.status as 400 | 401 | 404 | 408 | 409 | 500);
     }
     console.error('[companion]', err);
     return c.json({ error: 'PROCESS_FAILED', message: err.message }, 500);
@@ -88,6 +88,9 @@ export function createApp(options: AppOptions): Hono {
 
   app.use('/api/v1/im/*', async (c, next) => {
     if (c.req.path === '/api/v1/im/health') return next();
+    // Local dev (`scripts/run.sh`, :38000) calls test.json from Bruno without a
+    // token. The packaged app on 38888 still requires the bearer.
+    if (port === 38000 && c.req.path === '/api/v1/im/test.json') return next();
     const got = bearerToken(c.req.header('authorization'));
     if (got !== token) {
       return c.json({ error: 'UNAUTHORIZED', message: 'Bearer token required' }, 401);
@@ -180,6 +183,40 @@ export function createApp(options: AppOptions): Hono {
       throw new HttpError(400, 'INVALID_PARAM', 'messageId must be a positive integer');
     }
     return c.json({ ok: true, ...manager.replayMessage(connectionId, messageId) });
+  });
+
+  app.post('/api/v1/im/test.json', async (c) => {
+    const body = await readJson(c);
+    if (!isChannel(body.channel)) {
+      throw new HttpError(400, 'INVALID_PARAM', 'channel must be whatsapp or line');
+    }
+    if (body.payload == null || typeof body.payload !== 'object' || Array.isArray(body.payload)) {
+      throw new HttpError(400, 'INVALID_PARAM', 'payload must be a v1 cloud frame');
+    }
+    const maxResponse = body.maxResponse == null ? 1 : body.maxResponse;
+    if (typeof maxResponse !== 'number' || !Number.isInteger(maxResponse) || maxResponse < 1) {
+      throw new HttpError(400, 'INVALID_PARAM', 'maxResponse must be an integer >= 1');
+    }
+    const maxWait = body.maxWait == null ? 10 : body.maxWait;
+    if (typeof maxWait !== 'number' || !Number.isFinite(maxWait) || maxWait <= 0 || maxWait > 120) {
+      throw new HttpError(400, 'INVALID_PARAM', 'maxWait must be seconds greater than 0 and at most 120');
+    }
+    if (body.skipReply != null && typeof body.skipReply !== 'boolean') {
+      throw new HttpError(400, 'INVALID_PARAM', 'skipReply must be a boolean');
+    }
+    if (body.traceId != null && typeof body.traceId !== 'string') {
+      throw new HttpError(400, 'INVALID_PARAM', 'traceId must be a string');
+    }
+    const traceId = typeof body.traceId === 'string' ? body.traceId.trim() : '';
+    const frames = await manager.testExchange({
+      channel: body.channel,
+      payload: body.payload,
+      maxResponse,
+      maxWaitMs: maxWait * 1000,
+      skipReply: body.skipReply !== false,
+      ...(traceId !== '' ? { traceId } : {}),
+    });
+    return c.json(frames);
   });
 
   app.put('/api/v1/im/connection/:id/webhook.json', async (c) => {

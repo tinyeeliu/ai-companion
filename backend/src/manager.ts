@@ -22,7 +22,8 @@ import { createMediaUploader } from './mediaUpload';
 import { ConnectionMediaCache } from './media/cache';
 import type { MediaCacheStore } from './media/store';
 import { postWebhook, type FetchLike } from './webhook';
-import { CloudLink } from './cloud/link';
+import { CloudLink, type CloudLinkHooks } from './cloud/link';
+import { parseFrame, type CloudFrame } from './cloud/protocol';
 import {
   CloudEventTransport,
   DeviceSendTransport,
@@ -89,6 +90,8 @@ export class ConnectionManager {
   private readonly live = new Map<string, Live>();
   private readonly clouds = new Map<string, CloudLink>();
   private readonly queues = new Map<string, ConnectionQueues>();
+  /** One test exchange at a time. A second call fails before it touches a socket. */
+  private testing = false;
 
   constructor(
     readonly store: ConnectionStore,
@@ -102,6 +105,8 @@ export class ConnectionManager {
      * nowhere to write — and every test that does not care — wants.
      */
     readonly media: MediaCacheStore | null = null,
+    /** Test seam: dial cloud sockets without the network. */
+    private readonly cloudSocketFactory?: CloudLinkHooks['socketFactory'],
   ) {}
 
   async restoreEnabled(): Promise<void> {
@@ -403,6 +408,70 @@ export class ConnectionManager {
     return { messageId: row.messageId, name, userId: row.from };
   }
 
+  /**
+   * Inject one cloud frame on the first open link for `channel` and collect the
+   * frames that come back. `skipReply` acks them without touching the phone.
+   */
+  async testExchange(input: {
+    channel: Channel;
+    payload: unknown;
+    maxResponse: number;
+    maxWaitMs: number;
+    skipReply: boolean;
+    traceId?: string;
+  }): Promise<CloudFrame[]> {
+    if (this.testing) {
+      throw new HttpError(409, 'TEST_IN_PROGRESS', 'Another websocket test is already running');
+    }
+    this.testing = true;
+    try {
+      const link = this.openLink(input.channel);
+      if (link == null) {
+        throw new HttpError(409, 'NOT_CONNECTED', `No open ${input.channel} cloud link`);
+      }
+      const frame = frameForTest(input.payload, link.connectionId, input.channel, input.traceId);
+      const collected: CloudFrame[] = [];
+      let finish = (): void => {};
+      const done = new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      const stop = link.link.watch(
+        (down) => {
+          if (down.type !== 'invoke' && down.type !== 'error') return;
+          collected.push(down);
+          if (collected.length >= input.maxResponse) finish();
+        },
+        { skipReply: input.skipReply },
+      );
+      const timer = setTimeout(finish, input.maxWaitMs);
+      try {
+        if (!link.link.sendFrame(frame)) {
+          throw new HttpError(409, 'NOT_CONNECTED', `No open ${input.channel} cloud link`);
+        }
+        await done;
+      } finally {
+        clearTimeout(timer);
+        stop();
+      }
+      if (collected.length === 0) {
+        const seconds = input.maxWaitMs / 1000;
+        throw new HttpError(408, 'TIMEOUT', `No websocket response within ${seconds} seconds`);
+      }
+      return collected;
+    } finally {
+      this.testing = false;
+    }
+  }
+
+  /** First open cloud link for the channel, in the order links were started. */
+  private openLink(channel: Channel): { connectionId: string; link: CloudLink } | null {
+    for (const [id, link] of this.clouds) {
+      const row = this.store.get(id);
+      if (row?.channel === channel && link.isOpen()) return { connectionId: id, link };
+    }
+    return null;
+  }
+
   private factoryFor(channel: Channel): ChannelFactory {
     return channel === 'line' ? this.lineFactory : this.factory;
   }
@@ -620,6 +689,7 @@ export class ConnectionManager {
         if (current == null) return null;
         return this.queueSend(id, current.channel, name, args);
       },
+      ...(this.cloudSocketFactory != null ? { socketFactory: this.cloudSocketFactory } : {}),
       onTerminalClose: (code) => {
         // The server refused this link. Stop and record why, so the UI can ask
         // the user for a current token instead of us looping on a dead socket.
@@ -717,4 +787,48 @@ export class ConnectionManager {
       lastError: error instanceof Error ? error.message : String(error),
     });
   }
+}
+
+/** A caller-supplied frame, rewritten onto the live link. */
+function frameForTest(
+  payload: unknown,
+  connectionId: string,
+  channel: Channel,
+  traceId?: string,
+): CloudFrame {
+  let raw: string;
+  try {
+    raw = JSON.stringify(payload);
+  } catch {
+    throw new HttpError(400, 'INVALID_PARAM', 'payload must be a v1 cloud frame');
+  }
+  const frame = parseFrame(raw);
+  if (frame == null) {
+    throw new HttpError(400, 'INVALID_PARAM', 'payload must be a v1 cloud frame');
+  }
+  frame.connectionId = connectionId;
+  frame.channel = channel;
+  if (traceId != null && traceId !== '') frame.traceId = traceId;
+  // IMG drops a WhatsApp id it has already seen. A repeated test body must
+  // still be a new message, so each send gets a fresh key.id.
+  assignFreshMessageIds(frame);
+  return frame;
+}
+
+/** Replace `messages[].key.id` so a replay is not treated as a duplicate. */
+function assignFreshMessageIds(frame: CloudFrame): void {
+  const data = frame.data;
+  if (data == null || typeof data !== 'object' || Array.isArray(data)) return;
+  const messages = (data as { messages?: unknown }).messages;
+  if (!Array.isArray(messages)) return;
+  for (const message of messages) {
+    if (message == null || typeof message !== 'object' || Array.isArray(message)) continue;
+    const key = (message as { key?: unknown }).key;
+    if (key == null || typeof key !== 'object' || Array.isArray(key)) continue;
+    (key as { id?: string }).id = newTestMessageId();
+  }
+}
+
+function newTestMessageId(): string {
+  return `T${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`.toUpperCase();
 }

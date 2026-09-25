@@ -31,6 +31,11 @@ export interface CloudFrame {
    * parse a vendor payload to find the sender, and it is never a tenant id.
    */
   userId?: string;
+  /**
+   * Debug-log folder name for this turn. When set, the cloud uses it instead of
+   * generating a timestamp. Omitted on ordinary traffic.
+   */
+  traceId?: string;
   data?: unknown;
   error?: CloudError;
 }
@@ -117,6 +122,7 @@ export function parseFrame(raw: string): CloudFrame | null {
   if (typeof rec.channel === 'string' && rec.channel !== '') frame.channel = rec.channel;
   if (typeof rec.name === 'string' && rec.name !== '') frame.name = rec.name;
   if (typeof rec.userId === 'string' && rec.userId !== '') frame.userId = rec.userId;
+  if (typeof rec.traceId === 'string' && rec.traceId !== '') frame.traceId = rec.traceId;
   if ('data' in rec) frame.data = reviveBin(rec.data);
   if (rec.error != null && typeof rec.error === 'object' && !Array.isArray(rec.error)) {
     const err = rec.error as Record<string, unknown>;
@@ -134,6 +140,7 @@ export function stringifyFrame(frame: CloudFrame): string {
   if (frame.channel != null) body.channel = frame.channel;
   if (frame.name != null) body.name = frame.name;
   if (frame.userId != null && frame.userId !== '') body.userId = frame.userId;
+  if (frame.traceId != null && frame.traceId !== '') body.traceId = frame.traceId;
   if (frame.data !== undefined) body.data = encodeBin(frame.data);
   if (frame.error != null) body.error = frame.error;
   return JSON.stringify(body);

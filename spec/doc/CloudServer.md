@@ -86,6 +86,7 @@ Every message is a JSON object:
   "channel": "whatsapp",
   "userId": "+6591234567",
   "name": "messages.upsert",
+  "traceId": "2026-09-26_00-18-00",
   "data": {},
   "error": { "code": "NOT_CONNECTED", "message": "…" }
 }
@@ -97,6 +98,7 @@ Stable fields (do not add vendor keys here):
 - `connectionId` — Companion’s local session id. Required on `hello`, `event`, `invoke`, `result`.
 - `channel` — opaque IM name. Required on `hello`, `event`, `invoke`.
 - `userId` — optional, and generic: the channel user this frame concerns, when the adapter knows it (a WhatsApp JID or phone, a LINE user id). Companion fills it in per channel; you never parse a vendor payload to find the sender. Omit it when the event concerns nobody in particular or several users at once. It is a channel address, not a tenant or account id.
+- `traceId` — optional. When an `event` carries a non-empty string, the debug session folder uses that name instead of a generated timestamp. Omit it and the server generates one. It is not a vendor field.
 - `name` — opaque event or method name. Meaning is per channel (appendices below).
 - `data` — opaque JSON. For `invoke`, `{ "args": [ ... ] }`. Never a product envelope.
 

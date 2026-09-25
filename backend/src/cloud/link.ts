@@ -80,6 +80,13 @@ export class CloudLink {
   private refused = false;
   /** Consecutive pre-open refusals; a restart usually clears within a couple of tries. */
   private refusals = 0;
+  /** Downlink observers. A test call records frames here before invoke handling. */
+  private readonly watchers = new Set<(frame: CloudFrame) => void>();
+  /**
+   * While a test watch asked to skip replies, invokes are acked and not run on
+   * the phone. Cleared when that watch unsubscribes.
+   */
+  private skipReply = false;
 
   private readonly hooks: CloudLinkHooks;
 
@@ -133,6 +140,26 @@ export class CloudLink {
       ...(userId != null && userId !== '' ? { userId } : {}),
       data,
     });
+  }
+
+  /** Write a complete frame on the open socket. The caller owns the fields. */
+  sendFrame(frame: CloudFrame): boolean {
+    if (!this.isOpen()) return false;
+    return this.send(frame);
+  }
+
+  /**
+   * Observe every parsed downlink frame before it is handled. `skipReply`
+   * acks invokes with `{ skipped: true }` and does not touch the phone.
+   * The returned function removes this listener and clears the skip.
+   */
+  watch(listener: (frame: CloudFrame) => void, options?: { skipReply?: boolean }): () => void {
+    this.watchers.add(listener);
+    if (options?.skipReply === true) this.skipReply = true;
+    return () => {
+      this.watchers.delete(listener);
+      if (options?.skipReply === true) this.skipReply = false;
+    };
   }
 
   /** True only while the socket is open *and* the server has acknowledged us. */
@@ -235,6 +262,7 @@ export class CloudLink {
   private async onMessage(raw: string): Promise<void> {
     const frame = parseFrame(raw);
     if (frame == null) return;
+    for (const listener of this.watchers) listener(frame);
     if (frame.type === 'hello') {
       this.opened = true;
       this.backoffMs = 1_000;
@@ -274,6 +302,10 @@ export class CloudLink {
         type: 'error',
         error: { code: 'METHOD_NOT_ALLOWED', message: `method ${name} is not allowed on ${channel}` },
       });
+      return;
+    }
+    if (this.skipReply) {
+      reply({ v: 1, type: 'result', name, data: { skipped: true } });
       return;
     }
     const args = invokeArgs(frame.data);
