@@ -75,7 +75,7 @@ describe('REST /api/v1/im', () => {
 
   test('list without token is 401', async () => {
     const { app } = appWith();
-    const res = await app.request('/api/v1/im/connection');
+    const res = await app.request('/api/v1/im/connection.json');
     expect(res.status).toBe(401);
     const body = await res.json();
     expect(body.error).toBe('UNAUTHORIZED');
@@ -86,11 +86,11 @@ describe('REST /api/v1/im', () => {
     const { app, sessions: live } = appWith(sessions);
     void live;
 
-    const listed = await app.request('/api/v1/im/connection', { headers: authHeaders() });
+    const listed = await app.request('/api/v1/im/connection.json', { headers: authHeaders() });
     expect(listed.status).toBe(200);
     expect((await listed.json()).connections).toEqual([]);
 
-    const created = await app.request('/api/v1/im/connection', {
+    const created = await app.request('/api/v1/im/connection.json', {
       method: 'POST',
       headers: authHeaders(),
       body: JSON.stringify({ id: 'home' }),
@@ -103,7 +103,7 @@ describe('REST /api/v1/im', () => {
     expect(createdBody.connection.status).toBe('qr');
     expect(createdBody.connection.disconnectCount).toBe(0);
 
-    const renamed = await app.request('/api/v1/im/connection/home', {
+    const renamed = await app.request('/api/v1/im/connection/home.json', {
       method: 'PUT',
       headers: authHeaders(),
       body: JSON.stringify({ name: 'House' }),
@@ -111,10 +111,10 @@ describe('REST /api/v1/im', () => {
     expect(renamed.status).toBe(200);
     expect((await renamed.json()).connection.name).toBe('House');
 
-    const qr = await app.request('/api/v1/im/connection/home/qr', { headers: authHeaders() });
+    const qr = await app.request('/api/v1/im/connection/home/qr.json', { headers: authHeaders() });
     expect(await qr.json()).toEqual({ qr: '2@fake-qr', pin: null });
 
-    const enabled = await app.request('/api/v1/im/connection/home/enable', {
+    const enabled = await app.request('/api/v1/im/connection/home/enable.json', {
       method: 'POST',
       headers: authHeaders(),
     });
@@ -123,7 +123,7 @@ describe('REST /api/v1/im', () => {
     expect(enabledBody.connection.phone).toBe('6591111111');
     expect(enabledBody.connection.user).toBe('Alice');
 
-    const sent = await app.request('/api/v1/im/connection/home/message', {
+    const sent = await app.request('/api/v1/im/connection/home/message.json', {
       method: 'POST',
       headers: authHeaders(),
       body: JSON.stringify({ to: '6591222222', text: 'hello' }),
@@ -135,7 +135,7 @@ describe('REST /api/v1/im', () => {
     expect(sentBody.status).toBe('pending');
     expect(sentBody.id).toMatch(UUID7);
 
-    const listedOut = await app.request('/api/v1/im/connection/home/messages?direction=out', {
+    const listedOut = await app.request('/api/v1/im/connection/home/messages.json?direction=out', {
       headers: authHeaders(),
     });
     expect(listedOut.status).toBe(200);
@@ -145,7 +145,7 @@ describe('REST /api/v1/im', () => {
     expect(outBody.messages[0].to).toBe('6591222222');
     expect(outBody.messages[0].messageId).toBe(sentBody.id);
     const messageId = outBody.messages[0].id as number;
-    const detail = await app.request(`/api/v1/im/connection/home/messages/${messageId}`, {
+    const detail = await app.request(`/api/v1/im/connection/home/messages/${messageId}.json`, {
       headers: authHeaders(),
     });
     expect(detail.status).toBe(200);
@@ -157,7 +157,7 @@ describe('REST /api/v1/im', () => {
       text: 'hello',
     });
 
-    const hooked = await app.request('/api/v1/im/connection/home/webhook', {
+    const hooked = await app.request('/api/v1/im/connection/home/webhook.json', {
       method: 'PUT',
       headers: authHeaders(),
       body: JSON.stringify({ url: 'http://127.0.0.1:9999/hook', token: 'hook-secret' }),
@@ -166,7 +166,7 @@ describe('REST /api/v1/im', () => {
     expect(hookedBody.connection.webhookUrl).toBe('http://127.0.0.1:9999/hook');
     expect(hookedBody.connection.webhookToken).toBe('hook-secret');
 
-    const rehooked = await app.request('/api/v1/im/connection/home/webhook', {
+    const rehooked = await app.request('/api/v1/im/connection/home/webhook.json', {
       method: 'PUT',
       headers: authHeaders(),
       body: JSON.stringify({ url: 'http://127.0.0.1:9999/hook' }),
@@ -177,28 +177,28 @@ describe('REST /api/v1/im', () => {
     expect(missingTokenBody.error).toBe('INVALID_PARAM');
     expect(missingTokenBody.message).toBe('token is required when url is set');
 
-    const blankToken = await app.request('/api/v1/im/connection/home/webhook', {
+    const blankToken = await app.request('/api/v1/im/connection/home/webhook.json', {
       method: 'PUT',
       headers: authHeaders(),
       body: JSON.stringify({ url: 'http://127.0.0.1:9999/hook', token: '   ' }),
     });
     expect(blankToken.status).toBe(400);
 
-    const badToken = await app.request('/api/v1/im/connection/home/webhook', {
+    const badToken = await app.request('/api/v1/im/connection/home/webhook.json', {
       method: 'PUT',
       headers: authHeaders(),
       body: JSON.stringify({ url: 'http://127.0.0.1:9999/hook', token: 42 }),
     });
     expect(badToken.status).toBe(400);
 
-    const unhooked = await app.request('/api/v1/im/connection/home/webhook', {
+    const unhooked = await app.request('/api/v1/im/connection/home/webhook.json', {
       method: 'PUT',
       headers: authHeaders(),
       body: JSON.stringify({ url: null }),
     });
     expect((await unhooked.json()).connection.webhookToken).toBeNull();
 
-    const clouded = await app.request('/api/v1/im/connection/home/cloud', {
+    const clouded = await app.request('/api/v1/im/connection/home/cloud.json', {
       method: 'PUT',
       headers: authHeaders(),
       body: JSON.stringify({ url: 'ws://127.0.0.1:1/v1/companion', token: 'link-token' }),
@@ -208,13 +208,13 @@ describe('REST /api/v1/im', () => {
     expect(cloudBody.connection.cloudUrl).toBe('ws://127.0.0.1:1/v1/companion');
     expect(cloudBody.connection.cloudToken).toBe('link-token');
 
-    const disabled = await app.request('/api/v1/im/connection/home/disable', {
+    const disabled = await app.request('/api/v1/im/connection/home/disable.json', {
       method: 'POST',
       headers: authHeaders(),
     });
     expect((await disabled.json()).connection.status).toBe('disabled');
 
-    const gone = await app.request('/api/v1/im/connection/home', {
+    const gone = await app.request('/api/v1/im/connection/home.json', {
       method: 'DELETE',
       headers: authHeaders(),
     });
@@ -224,82 +224,82 @@ describe('REST /api/v1/im', () => {
   test('unknown connection and validation', async () => {
     const { app } = appWith();
     const headers = authHeaders();
-    expect((await app.request('/api/v1/im/connection/missing', { headers })).status).toBe(404);
+    expect((await app.request('/api/v1/im/connection/missing.json', { headers })).status).toBe(404);
     expect(
-      (await app.request('/api/v1/im/connection/missing/message', {
+      (await app.request('/api/v1/im/connection/missing/message.json', {
         method: 'POST',
         headers,
         body: JSON.stringify({ to: '6591', text: 'x' }),
       })).status,
     ).toBe(404);
     expect(
-      (await app.request('/api/v1/im/connection/missing/message', {
+      (await app.request('/api/v1/im/connection/missing/message.json', {
         method: 'POST',
         headers,
         body: JSON.stringify({ text: 'x' }),
       })).status,
     ).toBe(400);
     expect(
-      (await app.request('/api/v1/im/connection/missing/message', {
+      (await app.request('/api/v1/im/connection/missing/message.json', {
         method: 'POST',
         headers,
         body: JSON.stringify({ to: '6591' }),
       })).status,
     ).toBe(400);
-    expect((await app.request('/api/v1/im/connection/missing/enable', { method: 'POST', headers })).status).toBe(404);
-    expect((await app.request('/api/v1/im/connection/missing/disable', { method: 'POST', headers })).status).toBe(404);
+    expect((await app.request('/api/v1/im/connection/missing/enable.json', { method: 'POST', headers })).status).toBe(404);
+    expect((await app.request('/api/v1/im/connection/missing/disable.json', { method: 'POST', headers })).status).toBe(404);
     expect(
-      (await app.request('/api/v1/im/connection/missing/webhook', {
+      (await app.request('/api/v1/im/connection/missing/webhook.json', {
         method: 'PUT',
         headers,
         body: JSON.stringify({ url: 'http://127.0.0.1:9/h', token: 'hook-secret' }),
       })).status,
     ).toBe(404);
     expect(
-      (await app.request('/api/v1/im/connection/missing/cloud', {
+      (await app.request('/api/v1/im/connection/missing/cloud.json', {
         method: 'PUT',
         headers,
         body: JSON.stringify({ url: 'ws://127.0.0.1:9/c', token: 't' }),
       })).status,
     ).toBe(404);
     expect(
-      (await app.request('/api/v1/im/connection/missing', {
+      (await app.request('/api/v1/im/connection/missing.json', {
         method: 'PUT',
         headers,
         body: JSON.stringify({}),
       })).status,
     ).toBe(400);
-    expect((await app.request('/api/v1/im/connection/missing', { method: 'DELETE', headers })).status).toBe(404);
-    expect((await app.request('/api/v1/im/connection/missing/messages?direction=in', { headers })).status).toBe(404);
+    expect((await app.request('/api/v1/im/connection/missing.json', { method: 'DELETE', headers })).status).toBe(404);
+    expect((await app.request('/api/v1/im/connection/missing/messages.json?direction=in', { headers })).status).toBe(404);
     // `direction` is optional now, so an unknown connection is what fails.
-    expect((await app.request('/api/v1/im/connection/missing/messages', { headers })).status).toBe(404);
-    expect((await app.request('/api/v1/im/connection/missing/messages/1', { headers })).status).toBe(404);
+    expect((await app.request('/api/v1/im/connection/missing/messages.json', { headers })).status).toBe(404);
+    expect((await app.request('/api/v1/im/connection/missing/messages/1.json', { headers })).status).toBe(404);
   });
 
   test('a bad filter is rejected before the connection is looked up', async () => {
     const { app } = appWith(new Map());
     const headers = authHeaders();
-    await app.request('/api/v1/im/connection', {
+    await app.request('/api/v1/im/connection.json', {
       method: 'POST',
       headers,
       body: JSON.stringify({ id: 'home' }),
     });
-    expect((await app.request('/api/v1/im/connection/home/messages?direction=sideways', { headers })).status).toBe(400);
-    expect((await app.request('/api/v1/im/connection/home/messages?status=bogus', { headers })).status).toBe(400);
-    expect((await app.request('/api/v1/im/connection/home/messages?direction=all&status=failed&type=text', { headers })).status).toBe(200);
+    expect((await app.request('/api/v1/im/connection/home/messages.json?direction=sideways', { headers })).status).toBe(400);
+    expect((await app.request('/api/v1/im/connection/home/messages.json?status=bogus', { headers })).status).toBe(400);
+    expect((await app.request('/api/v1/im/connection/home/messages.json?direction=all&status=failed&type=text', { headers })).status).toBe(200);
   });
 
   test('replay validates the body before it looks anything up', async () => {
     const { app } = appWith(new Map());
     const headers = authHeaders();
-    await app.request('/api/v1/im/connection', {
+    await app.request('/api/v1/im/connection.json', {
       method: 'POST',
       headers,
       body: JSON.stringify({ id: 'home' }),
     });
     // Both ids travel in the body, so a missing one is a 400 rather than a 404.
     const replay = (body: unknown) =>
-      app.request('/api/v1/im/replay', { method: 'POST', headers, body: JSON.stringify(body) });
+      app.request('/api/v1/im/replay.json', { method: 'POST', headers, body: JSON.stringify(body) });
 
     expect((await replay({ messageId: 1 })).status).toBe(400);
     expect((await replay({ connectionId: '   ', messageId: 1 })).status).toBe(400);
@@ -322,7 +322,7 @@ describe('REST /api/v1/im', () => {
   test('replay refuses an outbound row and a connection without a cloud link', async () => {
     const { app, manager } = appWith(new Map());
     const headers = authHeaders();
-    await app.request('/api/v1/im/connection', {
+    await app.request('/api/v1/im/connection.json', {
       method: 'POST',
       headers,
       body: JSON.stringify({ id: 'home' }),
@@ -351,7 +351,7 @@ describe('REST /api/v1/im', () => {
       providerId: 'wamid.2',
     });
     const replay = (messageId: number) =>
-      app.request('/api/v1/im/replay', {
+      app.request('/api/v1/im/replay.json', {
         method: 'POST',
         headers,
         body: JSON.stringify({ connectionId: 'home', messageId }),
@@ -371,7 +371,7 @@ describe('REST /api/v1/im', () => {
   test('a send is queued while the phone is offline and delivers on connect', async () => {
     const sessions = new Map<string, FakeSession>();
     const { app, manager } = appWith(sessions);
-    await app.request('/api/v1/im/connection', {
+    await app.request('/api/v1/im/connection.json', {
       method: 'POST',
       headers: authHeaders(),
       body: JSON.stringify({ id: 'home' }),
@@ -379,7 +379,7 @@ describe('REST /api/v1/im', () => {
     });
     expect(manager.view('home').status).toBe('qr');
 
-    const sent = await app.request('/api/v1/im/connection/home/message', {
+    const sent = await app.request('/api/v1/im/connection/home/message.json', {
       method: 'POST',
       headers: authHeaders(),
       body: JSON.stringify({ to: '6591222222', text: 'queued hello' }),
@@ -390,15 +390,15 @@ describe('REST /api/v1/im', () => {
     expect(sentBody.status).toBe('pending');
     expect(sentBody.id).toMatch(UUID7);
 
-    const queued = await app.request('/api/v1/im/connection/home/messages?direction=out', {
+    const queued = await app.request('/api/v1/im/connection/home/messages.json?direction=out', {
       headers: authHeaders(),
     });
     expect((await queued.json()).messages[0].status).toBe('pending');
 
     // The phone comes online; the worker drains what was waiting.
-    await app.request('/api/v1/im/connection/home/enable', { method: 'POST', headers: authHeaders() });
+    await app.request('/api/v1/im/connection/home/enable.json', { method: 'POST', headers: authHeaders() });
     await Bun.sleep(20);
-    const delivered = await app.request('/api/v1/im/connection/home/messages?direction=out', {
+    const delivered = await app.request('/api/v1/im/connection/home/messages.json?direction=out', {
       headers: authHeaders(),
     });
     const deliveredBody = await delivered.json();
@@ -414,12 +414,12 @@ describe('REST /api/v1/im', () => {
     };
     const sessions = new Map<string, FakeSession>();
     const { app, manager } = appWith(sessions, fetchFn);
-    await app.request('/api/v1/im/connection', {
+    await app.request('/api/v1/im/connection.json', {
       method: 'POST',
       headers: authHeaders(),
       body: JSON.stringify({ id: 'home' }),
     });
-    await app.request('/api/v1/im/connection/home/webhook', {
+    await app.request('/api/v1/im/connection/home/webhook.json', {
       method: 'PUT',
       headers: authHeaders(),
       body: JSON.stringify({ url: 'http://127.0.0.1:9999/hook', token: 'hook-secret' }),
@@ -448,14 +448,14 @@ describe('REST /api/v1/im', () => {
     ]);
     expect(manager.view('home').incomingCount).toBe(1);
 
-    const listedIn = await app.request('/api/v1/im/connection/home/messages?direction=in', {
+    const listedIn = await app.request('/api/v1/im/connection/home/messages.json?direction=in', {
       headers: authHeaders(),
     });
     expect(listedIn.status).toBe(200);
     const inBody = await listedIn.json();
     expect(inBody.total).toBe(1);
     expect(inBody.messages[0].summary).toBe('hi');
-    const inboundDetail = await app.request(`/api/v1/im/connection/home/messages/${inBody.messages[0].id}`, {
+    const inboundDetail = await app.request(`/api/v1/im/connection/home/messages/${inBody.messages[0].id}.json`, {
       headers: authHeaders(),
     });
     expect((await inboundDetail.json()).message.rawOut).toEqual(posts[0]);
@@ -464,7 +464,7 @@ describe('REST /api/v1/im', () => {
   test('disconnectCount is unexpected drops in 24 hours', async () => {
     const sessions = new Map<string, FakeSession>();
     const { app, manager } = appWith(sessions);
-    await app.request('/api/v1/im/connection', {
+    await app.request('/api/v1/im/connection.json', {
       method: 'POST',
       headers: authHeaders(),
       body: JSON.stringify({ id: 'home' }),
@@ -488,7 +488,7 @@ describe('REST /api/v1/im', () => {
     const { app, sessions: live } = lineAppWith(sessions);
     void live;
 
-    const created = await app.request('/api/v1/im/connection', {
+    const created = await app.request('/api/v1/im/connection.json', {
       method: 'POST',
       headers: authHeaders(),
       body: JSON.stringify({ id: 'desk', channel: 'line' }),
@@ -499,13 +499,13 @@ describe('REST /api/v1/im', () => {
     expect(createdBody.connection.status).toBe('qr');
     expect(createdBody.connection.pin).toBe('123456');
 
-    const qr = await app.request('/api/v1/im/connection/desk/qr', { headers: authHeaders() });
+    const qr = await app.request('/api/v1/im/connection/desk/qr.json', { headers: authHeaders() });
     expect(await qr.json()).toEqual({
       qr: 'https://line.me/R/nv/QRCodeAuth/fake',
       pin: '123456',
     });
 
-    const enabled = await app.request('/api/v1/im/connection/desk/enable', {
+    const enabled = await app.request('/api/v1/im/connection/desk/enable.json', {
       method: 'POST',
       headers: authHeaders(),
     });
@@ -514,7 +514,7 @@ describe('REST /api/v1/im', () => {
     expect(enabledBody.connection.phone).toBe('u-fake-mid');
     expect(enabledBody.connection.user).toBe('Display Name');
 
-    const sent = await app.request('/api/v1/im/connection/desk/message', {
+    const sent = await app.request('/api/v1/im/connection/desk/message.json', {
       method: 'POST',
       headers: authHeaders(),
       body: JSON.stringify({ to: 'u1234567890abcdef', text: 'hello' }),
@@ -532,7 +532,7 @@ describe('REST /api/v1/im', () => {
 
   test('rejects unknown channel', async () => {
     const { app } = appWith();
-    const res = await app.request('/api/v1/im/connection', {
+    const res = await app.request('/api/v1/im/connection.json', {
       method: 'POST',
       headers: authHeaders(),
       body: JSON.stringify({ channel: 'telegram' }),
@@ -548,12 +548,12 @@ describe('REST /api/v1/im', () => {
     };
     const sessions = new Map<string, FakeLineSession>();
     const { app } = lineAppWith(sessions, fetchFn);
-    await app.request('/api/v1/im/connection', {
+    await app.request('/api/v1/im/connection.json', {
       method: 'POST',
       headers: authHeaders(),
       body: JSON.stringify({ id: 'desk', channel: 'line' }),
     });
-    await app.request('/api/v1/im/connection/desk/webhook', {
+    await app.request('/api/v1/im/connection/desk/webhook.json', {
       method: 'PUT',
       headers: authHeaders(),
       body: JSON.stringify({ url: 'http://127.0.0.1:9999/hook', token: 'hook-secret' }),

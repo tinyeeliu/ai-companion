@@ -16,6 +16,16 @@ export interface AppOptions {
   port: number;
 }
 
+/**
+ * Hono captures a path param greedily, so a route ending in `:id{.+\\.json}`
+ * (`/connection/home.json`) hands the handler `home.json`. Strip the format
+ * suffix the same way SM3's `stripFormatSuffix` does. Static leaf segments
+ * (`/connection/:id/qr.json`) never need this — their param is a clean `home`.
+ */
+function stripFormatSuffix(value: string, suffix: string): string {
+  return value.endsWith(suffix) ? value.slice(0, -suffix.length) : value;
+}
+
 function recipientTo(value: unknown, channel: string): string {
   if (typeof value !== 'string') return '';
   if (channel === 'line') return value.trim();
@@ -40,7 +50,7 @@ export function createApp(options: AppOptions): Hono {
 
   app.use('/api/*', async (c, next) => {
     const isConsolePolling =
-      c.req.path === '/api/v1/im/health' || c.req.path === '/api/v1/im/connection';
+      c.req.path === '/api/v1/im/health' || c.req.path === '/api/v1/im/connection.json';
     if (isConsolePolling) {
       return next();
     }
@@ -85,9 +95,9 @@ export function createApp(options: AppOptions): Hono {
     return next();
   });
 
-  app.get('/api/v1/im/connection', (c) => c.json({ connections: manager.views() }));
+  app.get('/api/v1/im/connection.json', (c) => c.json({ connections: manager.views() }));
 
-  app.post('/api/v1/im/connection', async (c) => {
+  app.post('/api/v1/im/connection.json', async (c) => {
     const body = await readJson(c);
     const requested = typeof body.id === 'string' ? body.id : undefined;
     const name = typeof body.name === 'string' ? body.name : undefined;
@@ -100,40 +110,22 @@ export function createApp(options: AppOptions): Hono {
     return c.json({ connection });
   });
 
-  app.get('/api/v1/im/connection/:id', (c) => {
-    return c.json({ connection: manager.view(c.req.param('id')) });
-  });
-
-  app.put('/api/v1/im/connection/:id', async (c) => {
-    const body = await readJson(c);
-    if (typeof body.name !== 'string') {
-      throw new HttpError(400, 'INVALID_PARAM', 'name is required');
-    }
-    const connection = await manager.rename(c.req.param('id'), body.name);
-    return c.json({ connection });
-  });
-
-  app.delete('/api/v1/im/connection/:id', async (c) => {
-    await manager.remove(c.req.param('id'));
-    return c.json({ ok: true });
-  });
-
-  app.post('/api/v1/im/connection/:id/enable', async (c) => {
+  app.post('/api/v1/im/connection/:id/enable.json', async (c) => {
     const connection = await manager.enable(c.req.param('id'));
     return c.json({ connection });
   });
 
-  app.post('/api/v1/im/connection/:id/disable', async (c) => {
+  app.post('/api/v1/im/connection/:id/disable.json', async (c) => {
     const connection = await manager.disable(c.req.param('id'));
     return c.json({ connection });
   });
 
-  app.get('/api/v1/im/connection/:id/qr', (c) => {
+  app.get('/api/v1/im/connection/:id/qr.json', (c) => {
     const id = c.req.param('id');
     return c.json({ qr: manager.qr(id), pin: manager.pin(id) });
   });
 
-  app.get('/api/v1/im/connection/:id/messages', (c) => {
+  app.get('/api/v1/im/connection/:id/messages.json', (c) => {
     const id = c.req.param('id');
     const direction = c.req.query('direction') ?? 'all';
     if (!isDirectionFilter(direction)) {
@@ -152,16 +144,16 @@ export function createApp(options: AppOptions): Hono {
     );
   });
 
-  app.get('/api/v1/im/connection/:id/messages/:messageId', (c) => {
+  app.get('/api/v1/im/connection/:id/messages/:messageId{.+\\.json}', (c) => {
     const id = c.req.param('id');
-    const messageId = Number(c.req.param('messageId'));
+    const messageId = Number(stripFormatSuffix(c.req.param('messageId'), '.json'));
     if (!Number.isInteger(messageId) || messageId < 1) {
       throw new HttpError(400, 'INVALID_PARAM', 'messageId must be a positive integer');
     }
     return c.json({ message: manager.getMessage(id, messageId) });
   });
 
-  app.post('/api/v1/im/connection/:id/message', async (c) => {
+  app.post('/api/v1/im/connection/:id/message.json', async (c) => {
     const id = c.req.param('id');
     const body = await readJson(c);
     const text = typeof body.text === 'string' ? body.text.trim() : '';
@@ -177,7 +169,7 @@ export function createApp(options: AppOptions): Hono {
   });
 
   // Not connection-scoped: both ids travel in the body.
-  app.post('/api/v1/im/replay', async (c) => {
+  app.post('/api/v1/im/replay.json', async (c) => {
     const body = await readJson(c);
     const connectionId = typeof body.connectionId === 'string' ? body.connectionId.trim() : '';
     if (connectionId === '') {
@@ -190,7 +182,7 @@ export function createApp(options: AppOptions): Hono {
     return c.json({ ok: true, ...manager.replayMessage(connectionId, messageId) });
   });
 
-  app.put('/api/v1/im/connection/:id/webhook', async (c) => {
+  app.put('/api/v1/im/connection/:id/webhook.json', async (c) => {
     const body = await readJson(c);
     const raw = body.url;
     if (raw !== null && raw !== undefined && typeof raw !== 'string') {
@@ -214,7 +206,7 @@ export function createApp(options: AppOptions): Hono {
     return c.json({ connection });
   });
 
-  app.put('/api/v1/im/connection/:id/cloud', async (c) => {
+  app.put('/api/v1/im/connection/:id/cloud.json', async (c) => {
     const body = await readJson(c);
     const raw = body.url;
     if (raw !== null && raw !== undefined && typeof raw !== 'string') {
@@ -234,6 +226,27 @@ export function createApp(options: AppOptions): Hono {
     }
     const connection = await manager.setCloud(c.req.param('id'), url, url == null ? null : token);
     return c.json({ connection });
+  });
+
+  // Greedy captures come last: `:id{.+\\.json}` would otherwise swallow
+  // `home/qr` and match `/connection/home/qr.json` before its static leaf does.
+  // Same ordering rule as SM3's kanban.routes.ts.
+  app.get('/api/v1/im/connection/:id{.+\\.json}', (c) => {
+    return c.json({ connection: manager.view(stripFormatSuffix(c.req.param('id'), '.json')) });
+  });
+
+  app.put('/api/v1/im/connection/:id{.+\\.json}', async (c) => {
+    const body = await readJson(c);
+    if (typeof body.name !== 'string') {
+      throw new HttpError(400, 'INVALID_PARAM', 'name is required');
+    }
+    const connection = await manager.rename(stripFormatSuffix(c.req.param('id'), '.json'), body.name);
+    return c.json({ connection });
+  });
+
+  app.delete('/api/v1/im/connection/:id{.+\\.json}', async (c) => {
+    await manager.remove(stripFormatSuffix(c.req.param('id'), '.json'));
+    return c.json({ ok: true });
   });
 
   app.get('/*', serveStatic({ root: FRONTEND_DIR }));

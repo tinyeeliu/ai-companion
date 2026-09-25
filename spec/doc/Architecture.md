@@ -142,40 +142,50 @@ are not messages and still run inline.
 | Method | Path |
 |---|---|
 | GET | `/api/v1/im/health` |
-| GET | `/api/v1/im/connection` |
-| POST | `/api/v1/im/connection` |
-| GET | `/api/v1/im/connection/:id` |
-| DELETE | `/api/v1/im/connection/:id` |
-| POST | `/api/v1/im/connection/:id/enable` |
-| POST | `/api/v1/im/connection/:id/disable` |
-| GET | `/api/v1/im/connection/:id/qr` |
-| POST | `/api/v1/im/connection/:id/message` |
-| GET | `/api/v1/im/connection/:id/messages` |
-| GET | `/api/v1/im/connection/:id/messages/:messageId` |
-| POST | `/api/v1/im/replay` |
-| PUT | `/api/v1/im/connection/:id` |
-| PUT | `/api/v1/im/connection/:id/webhook` |
-| PUT | `/api/v1/im/connection/:id/cloud` |
+| GET | `/api/v1/im/connection.json` |
+| POST | `/api/v1/im/connection.json` |
+| GET | `/api/v1/im/connection/:id.json` |
+| DELETE | `/api/v1/im/connection/:id.json` |
+| POST | `/api/v1/im/connection/:id/enable.json` |
+| POST | `/api/v1/im/connection/:id/disable.json` |
+| GET | `/api/v1/im/connection/:id/qr.json` |
+| POST | `/api/v1/im/connection/:id/message.json` |
+| GET | `/api/v1/im/connection/:id/messages.json` |
+| GET | `/api/v1/im/connection/:id/messages/:messageId.json` |
+| POST | `/api/v1/im/replay.json` |
+| PUT | `/api/v1/im/connection/:id.json` |
+| PUT | `/api/v1/im/connection/:id/webhook.json` |
+| PUT | `/api/v1/im/connection/:id/cloud.json` |
 
-`POST /connection` body: `{ "channel": "whatsapp" | "line", "id"?, "name"? }`. `channel` defaults to `whatsapp`.
+Every JSON route carries the repo's `.json` suffix on its last path segment;
+`GET /api/v1/im/health` is the one exception, because the SPA and packaged probe
+read it before they have a token.
 
-`PUT /connection/:id` body: `{ "name": "…" }` (1–64 characters). The id does not change.
+Routing follows SM3 (`kanban.routes.ts`): a static leaf segment keeps `.json`
+inline and its plain `:id` param stays clean (`/connection/:id/qr.json`), while a
+route whose **last** segment is the id uses the `:id{.+\\.json}` capture and the
+handler strips the suffix with `stripFormatSuffix`. Those greedy captures are
+registered **after** every static leaf, or `:id` would swallow `home/qr` first.
 
-`PUT /connection/:id/webhook` body: `{ "url": "https://…", "token": "…" }` or `{ "url": null }` to clear.
+`POST /connection.json` body: `{ "channel": "whatsapp" | "line", "id"?, "name"? }`. `channel` defaults to `whatsapp`.
+
+`PUT /connection/:id.json` body: `{ "name": "…" }` (1–64 characters). The id does not change.
+
+`PUT /connection/:id/webhook.json` body: `{ "url": "https://…", "token": "…" }` or `{ "url": null }` to clear.
 `token` is required whenever `url` is set; every webhook POST carries it as `Authorization: Bearer <token>`.
 
-`PUT /connection/:id/cloud` body: `{ "url": "wss://…" | "ws://…", "token": "…" }` or `{ "url": null }` to clear.
+`PUT /connection/:id/cloud.json` body: `{ "url": "wss://…" | "ws://…", "token": "…" }` or `{ "url": null }` to clear.
 Each connection stores `cloudUrl` / `cloudToken` on the same index as `webhookUrl` and dials its own WebSocket. See [CloudServer.md](CloudServer.md).
 
-`GET /qr` returns `{ "qr": "…" | null, "pin": "…" | null }`. `pin` is set only while linking LINE.
+`GET /qr.json` returns `{ "qr": "…" | null, "pin": "…" | null }`. `pin` is set only while linking LINE.
 
-`GET /messages?direction=all|in|out&type=text&status=failed&page=1&limit=10` lists the last 7 days, newest first. Every filter is optional and they combine: `direction` defaults to `all` (both directions merged), `type` is an exact message type, and `status` is one of `na` / `pending` / `sent` / `failed`. `total` counts the filtered set. An unknown `direction` or `status` is a 400. `GET /messages/:messageId` returns metadata plus `rawIn` / `rawOut` JSON. Both carry `messageId`, `status`, and `errorCount`.
+`GET /messages.json?direction=all|in|out&type=text&status=failed&page=1&limit=10` lists the last 7 days, newest first. Every filter is optional and they combine: `direction` defaults to `all` (both directions merged), `type` is an exact message type, and `status` is one of `na` / `pending` / `sent` / `failed`. `total` counts the filtered set. An unknown `direction` or `status` is a 400. `GET /messages/:messageId.json` returns metadata plus `rawIn` / `rawOut` JSON. Both carry `messageId`, `status`, and `errorCount`.
 
-`POST /message` body: `{ "to": "…", "text": "…" }`. The send is queued and answered immediately as `{ "id": "<messageId>", "to": "…", "status": "pending" }` — it does not wait for the phone, so it no longer answers 409 when the session is offline.
+`POST /message.json` body: `{ "to": "…", "text": "…" }`. The send is queued and answered immediately as `{ "id": "<messageId>", "to": "…", "status": "pending" }` — it does not wait for the phone, so it no longer answers 409 when the session is offline.
 
 WhatsApp `to` is digits with country code. LINE `to` is a mid (for example `u…`) and is not stripped.
 
-`POST /replay` is a debug helper for the cloud pipe and is deliberately not connection-scoped: both ids travel in the body as `{ "connectionId": "…", "messageId": 1 }`. It re-frames a received row's stored payload exactly as the worker forwarded it the first time (`messages.upsert` for WhatsApp, `message` for LINE) and writes it straight onto the open cloud link. It is **not** a retry: nothing is re-queued and the row's `status`, `error_count` and `last_error` are untouched, so the cloud simply receives the same event again. Only `direction: "in"` rows can be replayed, and it answers `{ "ok": true, "messageId": "…", "name": "messages.upsert", "userId": "…" }`. Errors: `400 INVALID_PARAM` (missing `connectionId`, or a `messageId` that is not a positive integer), `404 NOT_FOUND` (unknown connection or message), `409 INVALID_STATE` (the row is outbound, or it has no stored payload), `409 NOT_CONNECTED` (the cloud link is not open).
+`POST /replay.json` is a debug helper for the cloud pipe and is deliberately not connection-scoped: both ids travel in the body as `{ "connectionId": "…", "messageId": 1 }`. It re-frames a received row's stored payload exactly as the worker forwarded it the first time (`messages.upsert` for WhatsApp, `message` for LINE) and writes it straight onto the open cloud link. It is **not** a retry: nothing is re-queued and the row's `status`, `error_count` and `last_error` are untouched, so the cloud simply receives the same event again. Only `direction: "in"` rows can be replayed, and it answers `{ "ok": true, "messageId": "…", "name": "messages.upsert", "userId": "…" }`. Errors: `400 INVALID_PARAM` (missing `connectionId`, or a `messageId` that is not a positive integer), `404 NOT_FOUND` (unknown connection or message), `409 INVALID_STATE` (the row is outbound, or it has no stored payload), `409 NOT_CONNECTED` (the cloud link is not open).
 
 Connection views expose `phone` as the account id (WhatsApp number or LINE mid) and `user` as the display name when the channel provides one.
 
@@ -218,7 +228,7 @@ LINEJS (`@evex/linejs`) is an unofficial personal-account client. Not the Offici
 - HTTP request and response JSON is logged with `[companion][http]` prefixes.
 - Outbound webhook JSON and webhook responses are logged.
 - The dashboard polling endpoints `GET /api/v1/im/health` and
-  `GET /api/v1/im/connection` are intentionally not logged.
+  `GET /api/v1/im/connection.json` are intentionally not logged.
 - `Uint8Array` values are logged as byte counts rather than base64 payloads.
 - Errors use `console.error` with the original error object so the stack trace is
   printed.

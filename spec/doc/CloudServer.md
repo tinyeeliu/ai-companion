@@ -17,7 +17,7 @@ not change the envelope.
 One WebSocket URL. Companion stores it next to an optional HTTP webhook:
 
 ```
-PUT /api/v1/im/connection/:id/cloud
+PUT /api/v1/im/connection/:id/cloud.json
 { "url": "wss://example.com/v1/companion", "token": "…" }
 ```
 

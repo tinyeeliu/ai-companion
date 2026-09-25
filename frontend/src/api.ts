@@ -73,37 +73,37 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export function listConnections(): Promise<{ connections: Connection[] }> {
-  return request('/api/v1/im/connection');
+  return request('/api/v1/im/connection.json');
 }
 
 export function createConnection(
   body: { id?: string; name?: string; channel?: Channel } = {},
 ): Promise<{ connection: Connection }> {
-  return request('/api/v1/im/connection', { method: 'POST', body: JSON.stringify(body) });
+  return request('/api/v1/im/connection.json', { method: 'POST', body: JSON.stringify(body) });
 }
 
 export function getConnection(id: string): Promise<{ connection: Connection }> {
-  return request(`/api/v1/im/connection/${encodeURIComponent(id)}`);
+  return request(`/api/v1/im/connection/${encodeURIComponent(id)}.json`);
 }
 
 export function deleteConnection(id: string): Promise<{ ok: boolean }> {
-  return request(`/api/v1/im/connection/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  return request(`/api/v1/im/connection/${encodeURIComponent(id)}.json`, { method: 'DELETE' });
 }
 
 export function enableConnection(id: string): Promise<{ connection: Connection }> {
-  return request(`/api/v1/im/connection/${encodeURIComponent(id)}/enable`, { method: 'POST' });
+  return request(`/api/v1/im/connection/${encodeURIComponent(id)}/enable.json`, { method: 'POST' });
 }
 
 export function disableConnection(id: string): Promise<{ connection: Connection }> {
-  return request(`/api/v1/im/connection/${encodeURIComponent(id)}/disable`, { method: 'POST' });
+  return request(`/api/v1/im/connection/${encodeURIComponent(id)}/disable.json`, { method: 'POST' });
 }
 
 export function getQr(id: string): Promise<{ qr: string | null; pin: string | null }> {
-  return request(`/api/v1/im/connection/${encodeURIComponent(id)}/qr`);
+  return request(`/api/v1/im/connection/${encodeURIComponent(id)}/qr.json`);
 }
 
 export function sendMessage(id: string, to: string, text: string): Promise<{ id: string }> {
-  return request(`/api/v1/im/connection/${encodeURIComponent(id)}/message`, {
+  return request(`/api/v1/im/connection/${encodeURIComponent(id)}/message.json`, {
     method: 'POST',
     body: JSON.stringify({ to, text }),
   });
@@ -114,7 +114,7 @@ export function saveWebhook(
   url: string | null,
   token?: string | null,
 ): Promise<{ connection: Connection }> {
-  return request(`/api/v1/im/connection/${encodeURIComponent(id)}/webhook`, {
+  return request(`/api/v1/im/connection/${encodeURIComponent(id)}/webhook.json`, {
     method: 'PUT',
     body: JSON.stringify(url == null ? { url: null } : { url, token }),
   });
@@ -125,14 +125,14 @@ export function saveCloud(
   url: string | null,
   token?: string | null,
 ): Promise<{ connection: Connection }> {
-  return request(`/api/v1/im/connection/${encodeURIComponent(id)}/cloud`, {
+  return request(`/api/v1/im/connection/${encodeURIComponent(id)}/cloud.json`, {
     method: 'PUT',
     body: JSON.stringify(url == null ? { url: null } : { url, token }),
   });
 }
 
 export function renameConnection(id: string, name: string): Promise<{ connection: Connection }> {
-  return request(`/api/v1/im/connection/${encodeURIComponent(id)}`, {
+  return request(`/api/v1/im/connection/${encodeURIComponent(id)}.json`, {
     method: 'PUT',
     body: JSON.stringify({ name }),
   });
@@ -216,12 +216,12 @@ export function listMessages(
   if (query.limit != null) params.set('limit', String(query.limit));
   const suffix = params.toString();
   return request(
-    `/api/v1/im/connection/${encodeURIComponent(id)}/messages${suffix === '' ? '' : `?${suffix}`}`,
+    `/api/v1/im/connection/${encodeURIComponent(id)}/messages.json${suffix === '' ? '' : `?${suffix}`}`,
   );
 }
 
 export function getMessage(id: string, messageId: number): Promise<{ message: ChatMessageDetail }> {
-  return request(`/api/v1/im/connection/${encodeURIComponent(id)}/messages/${messageId}`);
+  return request(`/api/v1/im/connection/${encodeURIComponent(id)}/messages/${messageId}.json`);
 }
 
 /**
@@ -232,7 +232,7 @@ export function replayMessage(
   id: string,
   messageId: number,
 ): Promise<{ ok: true; messageId: string | null; name: string; userId: string }> {
-  return request('/api/v1/im/replay', {
+  return request('/api/v1/im/replay.json', {
     method: 'POST',
     body: JSON.stringify({ connectionId: id, messageId }),
   });

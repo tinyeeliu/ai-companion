@@ -115,13 +115,13 @@ export BASE=http://127.0.0.1:38888/api/v1/im
 See linked phones:
 
 ```bash
-curl -s "$BASE/connection" -H "Authorization: Bearer $TOKEN"
+curl -s "$BASE/connection.json" -H "Authorization: Bearer $TOKEN"
 ```
 
 Send a text. The call returns when the message is queued, not when the phone has delivered it. WhatsApp `to` is digits with the country code. LINE `to` is a user id (`u…`).
 
 ```bash
-curl -s "$BASE/connection/CONNECTION_ID/message" \
+curl -s "$BASE/connection/CONNECTION_ID/message.json" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"to":"15551234001","text":"On my way"}'
@@ -134,7 +134,7 @@ curl -s "$BASE/connection/CONNECTION_ID/message" \
 Push each new message to your HTTPS server. Companion calls that URL with the token as `Authorization: Bearer`:
 
 ```bash
-curl -s -X PUT "$BASE/connection/CONNECTION_ID/webhook" \
+curl -s -X PUT "$BASE/connection/CONNECTION_ID/webhook.json" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"url":"https://example.com/hooks/inbound","token":"example-token"}'
@@ -147,7 +147,7 @@ curl -s -X PUT "$BASE/connection/CONNECTION_ID/webhook" \
 Or have Companion dial your server. One URL and one token per phone:
 
 ```bash
-curl -s -X PUT "$BASE/connection/CONNECTION_ID/cloud" \
+curl -s -X PUT "$BASE/connection/CONNECTION_ID/cloud.json" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"url":"wss://example.com/v1/companion","token":"example-token"}'
@@ -178,7 +178,7 @@ On the cloud socket every frame is a JSON text message. The envelope is the same
 
 `channel` is `whatsapp` or `line`. `name` is the library event or the method you are calling. `userId`, when present, is the channel address of the one person the frame is about (a WhatsApp phone number, or a LINE user id). Bytes inside `data` are `{ "$bin": "<base64>" }` instead of raw binary.
 
-An app on the same computer can read the same library object without a WebSocket: `GET /api/v1/im/connection/:id/messages/:messageId` returns it as `rawIn`.
+An app on the same computer can read the same library object without a WebSocket: `GET /api/v1/im/connection/:id/messages/:messageId.json` returns it as `rawIn`.
 
 ### WhatsApp (Baileys)
 
@@ -269,7 +269,7 @@ Group messages arrive like one-to-one messages. `key.remoteJid` is the group JID
 To send to a group, address the group. The local `POST /message` keeps a `to` that already carries an `@` as it is, rather than reducing it to a phone number:
 
 ```bash
-curl -s "$BASE/connection/CONNECTION_ID/message" \
+curl -s "$BASE/connection/CONNECTION_ID/message.json" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"to":"120363412973586464@g.us","text":"See you at six"}'
