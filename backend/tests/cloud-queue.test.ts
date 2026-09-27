@@ -574,7 +574,7 @@ describe('end to end through the manager', () => {
       },
       websocket: {
         open(ws) {
-          ws.send(JSON.stringify({ v: 1, type: 'hello', data: { ok: true } }));
+          ws.send(JSON.stringify({ v: 1, type: 'init', data: { ok: true } }));
         },
         message(_ws, raw) {
           received.push(JSON.parse(String(raw)) as { type: string; name?: string; data?: unknown });
@@ -631,7 +631,7 @@ describe('end to end through the manager', () => {
       websocket: {
         open(ws) {
           socket = ws;
-          ws.send(JSON.stringify({ v: 1, type: 'hello', data: { ok: true } }));
+          ws.send(JSON.stringify({ v: 1, type: 'init', data: { ok: true } }));
         },
         message() {},
       },
@@ -692,7 +692,7 @@ describe('end to end through the manager', () => {
       },
       websocket: {
         open(ws) {
-          ws.send(JSON.stringify({ v: 1, type: 'hello', data: { ok: true } }));
+          ws.send(JSON.stringify({ v: 1, type: 'init', data: { ok: true } }));
         },
         message(_ws, raw) {
           received.push(JSON.parse(String(raw)) as { type: string; name?: string; data?: unknown });

@@ -4,7 +4,7 @@
 
 export const PROTOCOL_VERSION = 1 as const;
 
-export type CloudFrameType = 'hello' | 'event' | 'invoke' | 'result' | 'error' | 'ping' | 'pong';
+export type CloudFrameType = 'init' | 'event' | 'invoke' | 'result' | 'error' | 'ping' | 'pong';
 
 export type CloudErrorCode =
   | 'NOT_CONNECTED'
@@ -44,7 +44,7 @@ export interface CloudFrame {
  * The single terminal close code. Any server-side rejection — unknown token,
  * disabled link, revoked, replaced — closes with this and no reason string, so a
  * companion can implement "server said no, do not retry" in one line. Transport
- * drops and the 4408 hello timeout are recoverable and keep the backoff.
+ * drops and the 4408 init timeout are recoverable and keep the backoff.
  */
 export const TERMINAL_CLOSE_CODE = 4401;
 
@@ -106,7 +106,7 @@ export function parseFrame(raw: string): CloudFrame | null {
   if (rec.v !== PROTOCOL_VERSION) return null;
   const type = rec.type;
   if (
-    type !== 'hello' &&
+    type !== 'init' &&
     type !== 'event' &&
     type !== 'invoke' &&
     type !== 'result' &&

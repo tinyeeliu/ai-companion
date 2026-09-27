@@ -44,7 +44,7 @@ const manager = new ConnectionManager(
 );
 await manager.restoreEnabled();
 
-// Wakes normally drive the queue (link hello, session connect). This is the
+// Wakes normally drive the queue (link init, session connect). This is the
 // safety net that also retires rows past the 1-hour delivery window.
 manager.tickQueue();
 setInterval(() => {

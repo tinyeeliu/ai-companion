@@ -93,8 +93,8 @@ class FakeSocket {
   }
 
   /** Server greeting, which is what promotes the link to `connected`. */
-  hello(): void {
-    this.emit('message', { data: JSON.stringify({ v: 1, type: 'hello', data: { ok: true } }) });
+  init(): void {
+    this.emit('message', { data: JSON.stringify({ v: 1, type: 'init', data: { ok: true } }) });
   }
 
   serverClose(code: number): void {
@@ -121,7 +121,7 @@ describe('CloudLink state', () => {
     link.stop();
   });
 
-  test('a dial in flight is connecting, and only a server hello promotes it', () => {
+  test('a dial in flight is connecting, and only a server init promotes it', () => {
     const sockets = captureSockets();
     const link = dialing({}, sockets.factory);
     link.start();
@@ -129,7 +129,7 @@ describe('CloudLink state', () => {
     expect(link.state()).toBe('connecting');
     socket.open();
     expect(link.state()).not.toBe('connected');
-    socket.hello();
+    socket.init();
     expect(link.state()).toBe('connected');
     link.stop();
   });
@@ -141,7 +141,7 @@ describe('CloudLink state', () => {
     link.start();
     const socket = sockets.last()!;
     socket.open();
-    socket.hello();
+    socket.init();
     socket.serverClose(4401);
     expect(closes).toEqual([4401]);
     expect(link.state()).toBe('rejected');
@@ -156,7 +156,7 @@ describe('CloudLink state', () => {
     link.start();
     const socket = sockets.last()!;
     socket.open();
-    socket.hello();
+    socket.init();
     socket.serverClose(1006);
     expect(link.state()).toBe('retrying');
     link.stop();
@@ -208,7 +208,7 @@ describe('CloudLink state', () => {
     link.start();
     const socket = sockets.last()!;
     socket.open();
-    socket.hello();
+    socket.init();
     socket.refuseUpgrade();
     expect(closes).toEqual([]);
     link.stop();
@@ -278,7 +278,7 @@ describe('CloudLink event frames', () => {
     link.start();
     const socket = sockets.last()!;
     socket.open();
-    socket.hello();
+    socket.init();
     link.sendEvent('messages.upsert', { raw: true }, '85265862165');
     link.sendEvent('connection.update', { raw: true });
     const frames = socket.sent
@@ -289,7 +289,7 @@ describe('CloudLink event frames', () => {
     link.stop();
   });
 
-  test('hello carries the account and the whole channel profile', () => {
+  test('init carries the account and the whole channel profile', () => {
     const sockets = captureSockets();
     const link = dialing(
       {
@@ -306,16 +306,16 @@ describe('CloudLink event frames', () => {
     link.start();
     const socket = sockets.last()!;
     socket.open();
-    const hello = JSON.parse(socket.sent[0]!) as CloudFrame;
-    expect(hello.type).toBe('hello');
-    expect(hello.channel).toBe('whatsapp');
+    const init = JSON.parse(socket.sent[0]!) as CloudFrame;
+    expect(init.type).toBe('init');
+    expect(init.channel).toBe('whatsapp');
     // `account` stays for servers that only read the legacy field.
-    expect(hello.data).toEqual({
+    expect(init.data).toEqual({
       account: '15551367394',
       profile: {
         account: '15551367394',
         userId: '15551367394:7@s.whatsapp.net',
-        // The account's own LID rides the hello so the cloud can recognise an
+        // The account's own LID rides the init so the cloud can recognise an
         // `@lid` mention of the linked account (WhatsApp privacy addressing).
         lid: '12799723978969:7@lid',
         phone: '15551367394',
@@ -325,15 +325,15 @@ describe('CloudLink event frames', () => {
     link.stop();
   });
 
-  test('a channel with nothing to report still sends an empty hello data', () => {
+  test('a channel with nothing to report still sends an empty init data', () => {
     const sockets = captureSockets();
     const link = dialing({ account: () => undefined, profile: () => undefined }, sockets.factory);
     link.start();
     const socket = sockets.last()!;
     socket.open();
-    const hello = JSON.parse(socket.sent[0]!) as CloudFrame;
-    expect(hello.type).toBe('hello');
-    expect(hello.data).toEqual({});
+    const init = JSON.parse(socket.sent[0]!) as CloudFrame;
+    expect(init.type).toBe('init');
+    expect(init.data).toEqual({});
     link.stop();
   });
 });

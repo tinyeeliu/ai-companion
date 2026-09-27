@@ -11,7 +11,7 @@ import type { ChannelProfile } from '../types';
 import type { CloudStatus } from '../types';
 
 const PING_MS = 25_000;
-const HELLO_MS = 10_000;
+const INIT_MS = 10_000;
 const WS_OPEN = 1;
 
 /**
@@ -35,7 +35,7 @@ export type CloudLinkHooks = {
   account: () => string | undefined;
   /**
    * Everything the channel knows about the paired account, sent alongside
-   * `account` on `hello` so the cloud can fill its row (phone/mid → channelId,
+   * `account` on `init` so the cloud can fill its row (phone/mid → channelId,
    * phone → phone, push name → name). Omitted when the channel has nothing yet.
    */
   profile?: () => ChannelProfile | undefined;
@@ -48,12 +48,12 @@ export type CloudLinkHooks = {
    */
   onTerminalClose?: (code: number) => void;
   /**
-   * The link just became usable (server replied `hello`). The inbound queue
+   * The link just became usable (server replied `init`). The inbound queue
    * drains on this instead of polling, since a frame sent earlier is dropped.
    */
   onOpened?: () => void;
   /**
-   * Media presign endpoint the server advertised on its `hello`, or '' when it
+   * Media presign endpoint the server advertised on its `init`, or '' when it
    * advertised none. The manager records it so the channel can upload media
    * directly (1B) instead of shipping bytes in the frame (1A).
    */
@@ -72,7 +72,7 @@ export class CloudLink {
   private backoffMs = 1_000;
   private pingTimer: ReturnType<typeof setInterval> | null = null;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
-  private helloTimer: ReturnType<typeof setTimeout> | null = null;
+  private initTimer: ReturnType<typeof setTimeout> | null = null;
   private opened = false;
   /** True once the server said `4401`; the only state that needs a human. */
   private rejected = false;
@@ -186,22 +186,22 @@ export class CloudLink {
       return;
     }
     const ws = this.ws;
-    this.helloTimer = setTimeout(() => {
+    this.initTimer = setTimeout(() => {
       if (!this.opened) {
         try {
-          ws.close(4408, 'hello timeout');
+          ws.close(4408, 'init timeout');
         } catch {
           /* ignore */
         }
       }
-    }, HELLO_MS);
+    }, INIT_MS);
     ws.addEventListener('open', () => {
       if (this.ws !== ws || this.stopped) return;
       const account = this.hooks.account();
       const profile = this.hooks.profile?.();
       this.send({
         v: 1,
-        type: 'hello',
+        type: 'init',
         connectionId: this.hooks.connectionId,
         channel: this.hooks.channel,
         data: {
@@ -263,17 +263,17 @@ export class CloudLink {
     const frame = parseFrame(raw);
     if (frame == null) return;
     for (const listener of this.watchers) listener(frame);
-    if (frame.type === 'hello') {
+    if (frame.type === 'init') {
       this.opened = true;
       this.backoffMs = 1_000;
       this.refusals = 0;
       this.refused = false;
-      if (this.helloTimer != null) {
-        clearTimeout(this.helloTimer);
-        this.helloTimer = null;
+      if (this.initTimer != null) {
+        clearTimeout(this.initTimer);
+        this.initTimer = null;
       }
       this.startPing();
-      // The ack may carry the media presign endpoint. Reported on every hello so
+      // The ack may carry the media presign endpoint. Reported on every init so
       // a server that moves it (or starts advertising it) is picked up on the
       // next reconnect; '' means the frame carried none and media stays inline.
       this.hooks.onUploadEndpoint?.(uploadEndpointFrom(frame.data));
@@ -376,10 +376,10 @@ export class CloudLink {
   private clearTimers(): void {
     if (this.pingTimer != null) clearInterval(this.pingTimer);
     if (this.retryTimer != null) clearTimeout(this.retryTimer);
-    if (this.helloTimer != null) clearTimeout(this.helloTimer);
+    if (this.initTimer != null) clearTimeout(this.initTimer);
     this.pingTimer = null;
     this.retryTimer = null;
-    this.helloTimer = null;
+    this.initTimer = null;
   }
 }
 
@@ -392,7 +392,7 @@ function invokeArgs(data: unknown): unknown[] {
 }
 
 /**
- * The media presign endpoint a `hello` ack advertised, or '' when it carried
+ * The media presign endpoint an `init` ack advertised, or '' when it carried
  * none. Reads `data.upload.url`; anything else (an older server, a proxy that
  * rewrote the payload) is simply "no endpoint", which leaves the link on 1A.
  */

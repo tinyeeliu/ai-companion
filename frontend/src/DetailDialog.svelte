@@ -394,7 +394,7 @@ import { tip } from './tooltip';
                   oninput={() => (cloudDirty = true)}
                 />
               </label>
-              <!-- Learned from the server's hello, never entered here: read-only
+              <!-- Learned from the server's init, never entered here: read-only
                    so a typo can never break uploads. Showing "not offered" means
                    media travels inline in the frame. -->
               <label class="field">

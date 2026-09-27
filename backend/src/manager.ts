@@ -599,7 +599,7 @@ export class ConnectionManager {
   }
 
   /**
-   * Profile for the cloud `hello`: the live channel's own view when a session is
+   * Profile for the cloud `init`: the live channel's own view when a session is
    * up, else what the store remembered from the last successful pairing. Never
    * claims a phone for a channel that has none — `account` is the channel's
    * address (WhatsApp digits / LINE mid), and only WhatsApp fills `phone`.
@@ -673,7 +673,7 @@ export class ConnectionManager {
       profile: () => this.profileFor(id),
       session: () => this.live.get(id)?.session,
       // The socket accepting a write is not enough to send: an un-acked frame is
-      // dropped, so the inbound queue drains on the server's `hello`.
+      // dropped, so the inbound queue drains on the server's `init`.
       onOpened: () => transport.notifyReady(),
       onUploadEndpoint: (url) => {
         // Learned, never configured. Written only on change so a reconnect does

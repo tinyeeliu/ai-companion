@@ -66,7 +66,7 @@ export interface ChannelSession {
   account(): string | undefined;
   user(): string | undefined;
   /**
-   * What this channel knows about the paired account, sent on the cloud `hello`.
+   * What this channel knows about the paired account, sent on the cloud `init`.
    * Optional so a channel with nothing to add simply omits it; the `account` and
    * `user` accessors above still cover the local UI.
    */

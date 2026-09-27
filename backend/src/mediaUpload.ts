@@ -1,7 +1,7 @@
 /**
  * @fileoverview Direct-to-storage media upload (media phase 1B).
  *
- * The cloud advertises a presign endpoint on its `hello`. When one is known, the
+ * The cloud advertises a presign endpoint on its `init`. When one is known, the
  * Companion decrypts media, buys a short-lived PUT with the link bearer, and
  * uploads to the bucket itself, so the event frame carries only a url. That
  * keeps the bytes off the socket and out of the durable queue (which stores

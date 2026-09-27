@@ -39,7 +39,7 @@ describe('server restart while a link is live', () => {
       },
       websocket: {
         open(ws) {
-          ws.send(JSON.stringify({ v: 1, type: 'hello' }));
+          ws.send(JSON.stringify({ v: 1, type: 'init' }));
         },
         message() {},
       },
@@ -70,7 +70,7 @@ describe('server restart while a link is live', () => {
       },
       websocket: {
         open(ws) {
-          ws.send(JSON.stringify({ v: 1, type: 'hello' }));
+          ws.send(JSON.stringify({ v: 1, type: 'init' }));
         },
         message() {},
       },

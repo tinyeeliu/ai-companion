@@ -55,7 +55,7 @@ export type { Channel } from './channel';
 
 /**
  * Everything a paired device can name about the account it just linked. Sent on
- * the reverse-WSS `hello` so the cloud can fill its connection row (phone/mid →
+ * the reverse-WSS `init` so the cloud can fill its connection row (phone/mid →
  * `channelId`, phone → `phone`, handle → `username`, display name → `name`)
  * without a second round trip. Every field is optional: WhatsApp has a phone and
  * a push name, LINE has a mid and a displayName, and an unlinked session has
@@ -100,7 +100,7 @@ export interface ConnectionIndexEntry {
   cloudUrl: string | null;
   cloudToken: string | null;
   /**
-   * Media presign endpoint the cloud advertised on its last `hello`. Learned,
+   * Media presign endpoint the cloud advertised on its last `init`. Learned,
    * not configured: the Companion posts here to get an R2 PUT url and uploads
    * media directly, and falls back to sending bytes inline while it is absent.
    */
@@ -140,7 +140,7 @@ export interface ConnectionView {
   cloudUrl: string | null;
   cloudToken: string | null;
   /**
-   * Media presign endpoint learned from the cloud's `hello`, or null when it
+   * Media presign endpoint learned from the cloud's `init`, or null when it
    * advertised none (the link then uploads media inline).
    */
   uploadUrl: string | null;

@@ -16,7 +16,7 @@ export interface Connection {
   cloudUrl: string | null;
   cloudToken: string | null;
   /**
-   * Media presign endpoint learned from the cloud's `hello`, or null when the
+   * Media presign endpoint learned from the cloud's `init`, or null when the
    * server advertised none. Read-only in the UI: it is never typed by hand.
    */
   uploadUrl: string | null;

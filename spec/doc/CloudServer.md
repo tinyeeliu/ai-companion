@@ -35,8 +35,8 @@ PUT /api/v1/im/connection/:id/cloud.json
 2. Do not put the token in the query string (it leaks in access logs).
 3. Missing or invalid token: reject the upgrade with HTTP 401 — no socket is created. A token you later decide to reject (revoked, link disabled, replaced by a newer socket) is a close with code `4401`.
 4. v1 uses JSON **text** frames. No WebSocket subprotocol.
-5. Companion sends `hello` within 10 seconds. If it does not, close with code `4408`.
-6. Reply `hello` `{ "ok": true }`. The socket is live. The reply may also carry an optional `upload` block (see below).
+5. Companion sends `init` within 10 seconds. If it does not, close with code `4408`.
+6. Reply `init` `{ "ok": true }`. The socket is live. The reply may also carry an optional `upload` block (see below).
 7. Either side sends `ping` at least every 30 seconds; the other replies `pong`. Proxies often idle-timeout between 30 and 120 seconds.
 8. On close, Companion reconnects with exponential backoff (1s, 2s, 4s, … cap 60s) until the connection is disabled or `url` is cleared — **except** after `4401`, which means "do not retry" (see below).
 
@@ -45,7 +45,7 @@ PUT /api/v1/im/connection/:id/cloud.json
 | Code | Meaning | Companion behaviour |
 | --- | --- | --- |
 | `4401` | Terminal rejection: this socket must not come back. Unknown token, disabled/revoked link, replaced by a newer socket, or any other server-side "no". | Stops. Surfaces the failure. **Never retries.** |
-| `4408` | `hello` was not sent within 10 seconds. | Backoff retry. |
+| `4408` | `init` was not sent within 10 seconds. | Backoff retry. |
 | anything else / transport drop | Network blip, deploy, proxy timeout. | Backoff retry. |
 
 `4401` is the only terminal code: send no reason string, and reuse it for every rejection so a Companion can implement the whole rule as `if (code === 4401) stop()`. Companion ignores a reason, so do not encode detail there.
@@ -64,8 +64,8 @@ One Companion connection = one WebSocket. Do not multiplex channels on a single 
 Companion                Cloud
    |-- HTTP Upgrade Bearer -->|
    |<-- 101 -------------------|
-   |-- hello ----------------->|
-   |<-- hello ok --------------|
+   |-- init ----------------->|
+   |<-- init ok --------------|
    |-- event ----------------->|
    |<-- invoke ----------------|
    |-- result ---------------->|
@@ -80,7 +80,7 @@ Every message is a JSON object:
 ```json
 {
   "v": 1,
-  "type": "hello" | "event" | "invoke" | "result" | "error" | "ping" | "pong",
+  "type": "init" | "event" | "invoke" | "result" | "error" | "ping" | "pong",
   "id": "corrId",
   "connectionId": "home",
   "channel": "whatsapp",
@@ -95,14 +95,14 @@ Stable fields (do not add vendor keys here):
 
 - `v` — protocol version. Unknown `v`: reply `error` `UNSUPPORTED_VERSION`.
 - `id` — required on `invoke` and on the `result` / `error` that answers it. Companion copies it back.
-- `connectionId` — Companion’s local session id. Required on `hello`, `event`, `invoke`, `result`.
-- `channel` — opaque IM name. Required on `hello`, `event`, `invoke`.
+- `connectionId` — Companion’s local session id. Required on `init`, `event`, `invoke`, `result`.
+- `channel` — opaque IM name. Required on `init`, `event`, `invoke`.
 - `userId` — optional, and generic: the channel user this frame concerns, when the adapter knows it (a WhatsApp JID or phone, a LINE user id). Companion fills it in per channel; you never parse a vendor payload to find the sender. Omit it when the event concerns nobody in particular or several users at once. It is a channel address, not a tenant or account id.
 - `traceId` — optional. When an `event` carries a non-empty string, the debug session folder uses that name instead of a generated timestamp. Omit it and the server generates one. It is not a vendor field.
 - `name` — opaque event or method name. Meaning is per channel (appendices below).
 - `data` — opaque JSON. For `invoke`, `{ "args": [ ... ] }`. Never a product envelope.
 
-`hello` (Companion → you): top-level `connectionId` and `channel`; `data` may include `{ "account": "…" }` and, when the channel can name more, a `profile` block:
+`init` (Companion → you): top-level `connectionId` and `channel`; `data` may include `{ "account": "…" }` and, when the channel can name more, a `profile` block:
 
 ```json
 {
@@ -122,10 +122,10 @@ session, or an older Companion). These are **channel** account facts, not produc
 or tenant ids: `account` / `userId` are the channel address (WhatsApp phone or
 device JID, LINE mid), `phone` is digits-only and appears only where the channel
 has a phone (WhatsApp — LINE never fills it), `displayName` is the push name /
-displayName the channel shows. Send `hello` again after a reconnect so the server
+displayName the channel shows. Send `init` again after a reconnect so the server
 can refresh its record; nothing else on the frame identifies a user.
 
-`hello` (you → Companion): `data` `{ "ok": true }`.
+`init` (you → Companion): `data` `{ "ok": true }`.
 
 `event`: Companion forwards a vendor callback. `data` is the raw library payload. When the event concerns one channel user, `userId` carries their channel id; a batched event from several senders omits it.
 
@@ -167,7 +167,7 @@ Time out unanswered `invoke`s (15 seconds is a reasonable default).
 ## Server checklist
 
 - Accept the upgrade, authenticate the bearer, keep the socket open.
-- Understand `hello` / `event` / `invoke` / `result` / `error` / `ping` / `pong` without assuming a channel.
+- Understand `init` / `event` / `invoke` / `result` / `error` / `ping` / `pong` without assuming a channel.
 - Dispatch on `channel` + `name`; treat `data` as that channel’s vendor JSON.
 - Resolve tenant identity from the bearer token; never expect a product id on the frame. Reject with close code `4401` (nothing else) when a socket must not come back, and reject an unknown token with HTTP 401 before upgrading.
 - Fill in the optional `userId` when an event concerns exactly one channel user; omit it otherwise. Never put a tenant or account id there.
@@ -272,10 +272,10 @@ the plaintext total per frame as well as per file.
 #### Uploading to storage instead of sending bytes
 
 A server that wants media off the socket can hand the Companion a **presign endpoint** on
-the `hello` reply, and **upload the bytes itself**:
+the `init` reply, and **upload the bytes itself**:
 
 ```json
-{ "v": 1, "type": "hello", "data": { "ok": true, "upload": { "url": "https://api.example.com/v1/media/presign" } } }
+{ "v": 1, "type": "init", "data": { "ok": true, "upload": { "url": "https://api.example.com/v1/media/presign" } } }
 ```
 
 Then, per media message, the Companion:
@@ -289,7 +289,7 @@ Then, per media message, the Companion:
 
 Notes for a server implementing this:
 
-- The endpoint is part of the `hello` reply rather than something the Companion
+- The endpoint is part of the `init` reply rather than something the Companion
   configures, so the client needs no extra setting. Omit the block and the Companion
   simply keeps sending bytes inline.
 - The endpoint lives on the server's **API** origin, which is not necessarily the host the
@@ -396,18 +396,18 @@ Bun.serve({
   },
   websocket: {
     open(ws) {
-      ws.data = { hello: false };
+      ws.data = { init: false };
       setTimeout(() => {
-        if (!ws.data.hello) ws.close(4408, 'hello timeout');
+        if (!ws.data.init) ws.close(4408, 'init timeout');
       }, 10_000);
     },
     message(ws, raw) {
       const frame = JSON.parse(String(raw));
-      if (frame.type === 'hello') {
-        ws.data.hello = true;
+      if (frame.type === 'init') {
+        ws.data.init = true;
         ws.data.channel = frame.channel;
         ws.data.connectionId = frame.connectionId;
-        ws.send(JSON.stringify({ v: 1, type: 'hello', data: { ok: true } }));
+        ws.send(JSON.stringify({ v: 1, type: 'init', data: { ok: true } }));
         return;
       }
       if (frame.type === 'ping') {

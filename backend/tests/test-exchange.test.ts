@@ -68,8 +68,8 @@ class FakeSocket {
     this.emit('open', {});
   }
 
-  hello(): void {
-    this.emit('message', { data: JSON.stringify({ v: 1, type: 'hello', data: { ok: true } }) });
+  init(): void {
+    this.emit('message', { data: JSON.stringify({ v: 1, type: 'init', data: { ok: true } }) });
   }
 
   frame(body: Record<string, unknown>): void {
@@ -125,7 +125,7 @@ async function openWhatsapp(): Promise<{
   const socket = sockets.last();
   if (socket == null) throw new Error('cloud socket was not dialed');
   socket.open();
-  socket.hello();
+  socket.init();
   const session = sessions.get('wa-test');
   if (session == null) throw new Error('session was not started');
   return { manager, app: createApp({ manager, token: TOKEN, port: 38000 }), socket, session };
@@ -147,7 +147,7 @@ describe('POST /api/v1/im/test.json', () => {
     await Bun.sleep(20);
     socket.frame({ type: 'ping' });
     socket.frame({ type: 'invoke', id: 'a', name: 'readMessages', data: { args: [] } });
-    socket.frame({ type: 'hello', data: { ok: true } });
+    socket.frame({ type: 'init', data: { ok: true } });
     socket.frame({ type: 'invoke', id: 'b', name: 'sendPresenceUpdate', data: { args: ['composing', 'jid'] } });
     const res = await pending;
     expect(Date.now() - started).toBeLessThan(5_000);

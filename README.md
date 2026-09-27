@@ -153,7 +153,7 @@ curl -s -X PUT "$BASE/connection/CONNECTION_ID/cloud.json" \
   -d '{"url":"wss://example.com/v1/companion","token":"example-token"}'
 ```
 
-Your server accepts the WebSocket, checks the Bearer token, and answers `hello`. Events come in. Sends go back out on the same socket. Clear either setting with `{"url":null}`.
+Your server accepts the WebSocket, checks the Bearer token, and answers `init`. Events come in. Sends go back out on the same socket. Clear either setting with `{"url":null}`.
 
 The webhook body above is a short summary Companion builds for you. The cloud socket is different: `data` is the object from [Baileys](https://github.com/WhiskeySockets/Baileys) or [LINEJS](https://jsr.io/@evex/linejs), unchanged. The next section is that exchange.
 
