@@ -35,7 +35,11 @@ export interface Connection {
 export interface Health {
   ok: boolean;
   port: number;
-  token: string;
+  /**
+   * Present only when the health probe came from this machine. An external
+   * caller gets no token, and the SPA is meant to be used locally.
+   */
+  token?: string;
 }
 
 let token = '';
@@ -46,7 +50,7 @@ export function authToken(): string {
 
 export async function bootstrap(): Promise<Health> {
   const health = await fetchHealth();
-  token = health.token;
+  if (typeof health.token === 'string' && health.token !== '') token = health.token;
   return health;
 }
 
@@ -236,4 +240,25 @@ export function replayMessage(
     method: 'POST',
     body: JSON.stringify({ connectionId: id, messageId }),
   });
+}
+
+/**
+ * The API bearer token. Local callers are trusted, so this always answers on
+ * this machine; external callers would need the token first.
+ */
+export function getSettings(): Promise<{ token: string }> {
+  return request('/api/v1/settings.json');
+}
+
+/** Replace the token with a custom value. Returns the stored value. */
+export function saveSettings(token: string): Promise<{ token: string }> {
+  return request('/api/v1/settings.json', {
+    method: 'PUT',
+    body: JSON.stringify({ token }),
+  });
+}
+
+/** Generate a fresh uuid4 token, invalidating the previous one. */
+export function regenerateToken(): Promise<{ token: string }> {
+  return request('/api/v1/settings/token/regenerate.json', { method: 'POST' });
 }

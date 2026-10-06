@@ -1,8 +1,10 @@
 import { Hono } from 'hono';
 import { serveStatic } from 'hono/bun';
+import type { Context } from 'hono';
 import type { ConnectionManager } from './manager';
 import { FRONTEND_DIR } from './paths';
-import { bearerToken } from './token';
+import { bearerToken, isValidToken, newToken, setConfigToken } from './token';
+import { clientIsLoopback, constantTimeEqual } from './auth';
 import { isChannel } from './channel';
 import { HttpError, jsonError } from './types';
 import { isHttpUrl, isWsUrl } from './webhook';
@@ -13,8 +15,20 @@ import { registerImageRoutes, type ImageRoutesOptions } from './gen';
 
 export interface AppOptions {
   manager: ConnectionManager;
+  /** Initial bearer token; live changes are held in-process and persisted. */
   token: string;
   port: number;
+  /**
+   * Data root where a token changed in Settings is written (`config.json`).
+   * Optional so unit tests that never touch Settings can omit it; changes then
+   * stay in-memory only.
+   */
+  configRoot?: string;
+  /**
+   * Overrides how a request's origin is judged. Defaults to the socket
+   * address; tests inject `() => false` to act like an external caller.
+   */
+  isLocalRequest?: (c: Context) => boolean;
   /**
    * Image generation. Omitted where the CLI is unavailable or in tests that do
    * not exercise it — the routes are then simply not mounted.
@@ -52,12 +66,20 @@ async function readJson(c: { req: { json: () => Promise<unknown> } }): Promise<R
 
 export function createApp(options: AppOptions): Hono {
   const app = new Hono();
-  const { manager, token, port } = options;
+  const { manager, port } = options;
+  const isLocalRequest = options.isLocalRequest ?? clientIsLoopback;
+  const configRoot = options.configRoot;
+  // Mutable: a token changed in Settings takes effect at once, no restart.
+  let token = options.token;
 
   app.use('/api/*', async (c, next) => {
-    const isConsolePolling =
-      c.req.path === '/api/v1/im/health' || c.req.path === '/api/v1/im/connection.json';
-    if (isConsolePolling) {
+    // Not logged: the dashboard polls these every 2s, and the Settings routes
+    // return the bearer token, which must never reach the log.
+    const quiet =
+      c.req.path === '/api/v1/im/health' ||
+      c.req.path === '/api/v1/im/connection.json' ||
+      c.req.path.startsWith('/api/v1/settings');
+    if (quiet) {
       return next();
     }
     let requestJson: unknown = null;
@@ -90,31 +112,52 @@ export function createApp(options: AppOptions): Hono {
     return c.json({ error: 'PROCESS_FAILED', message: err.message }, 500);
   });
 
-  app.get('/api/v1/im/health', (c) => c.json({ ok: true, port, token }));
+  // Public liveness probe. Registered before the guard below and exempted there,
+  // so it is reachable without a token from anywhere. The token is only echoed
+  // to a loopback caller: an external one learns nothing it could not guess,
+  // and the local SPA still auto-authenticates from it.
+  app.get('/api/v1/im/health', (c) => {
+    const body = { ok: true, port, ...(isLocalRequest(c) ? { token } : {}) };
+    return c.json(body);
+  });
 
-  // Bearer on every IM route except the one public health probe. `test.json` is
-  // also open on the local dev port.
-  function requiresAuth(path: string): boolean {
-    if (path === '/api/v1/im/health') return false;
-    // Local dev (`scripts/run.sh`, :38000) calls test.json from Bruno without a
-    // token. The packaged app on 38888 still requires the bearer.
-    if (port === 38000 && path === '/api/v1/im/test.json') return false;
-    return true;
-  }
-
-  app.use('/api/v1/im/*', async (c, next) => {
-    if (!requiresAuth(c.req.path)) return next();
+  /**
+   * One guard for every `/api/*` route: loopback is trusted, anything else must
+   * present the bearer token. The socket address is authoritative; a forwarded
+   * header is never consulted. Registered before the routes so it always runs,
+   * with the one public health probe exempted.
+   */
+  app.use('/api/*', async (c, next) => {
+    if (c.req.path === '/api/v1/im/health') return next();
+    if (isLocalRequest(c)) return next();
     const got = bearerToken(c.req.header('authorization'));
-    if (got !== token) {
+    if (!constantTimeEqual(got, token)) {
       return c.json({ error: 'UNAUTHORIZED', message: 'Bearer token required' }, 401);
     }
     return next();
   });
 
-  // `/api/v1/image/*` is deliberately NOT behind the bearer. Image generation is
-  // a local, single-tenant capability on a loopback-bound sidecar, and the plan
-  // asked for it to stay reachable without a token. Everything it can reach is
-  // local: a model on this machine and files this process wrote itself.
+  /** Persists a new token and swaps it in for the live guard. */
+  function applyToken(next: string): void {
+    token = next;
+    if (configRoot != null) setConfigToken(configRoot, next);
+  }
+
+  app.get('/api/v1/settings.json', (c) => c.json({ token }));
+
+  app.put('/api/v1/settings.json', async (c) => {
+    const body = await readJson(c);
+    if (!isValidToken(body.token)) {
+      throw new HttpError(400, 'INVALID_PARAM', 'token must be a non-empty string');
+    }
+    applyToken(body.token.trim());
+    return c.json({ token });
+  });
+
+  app.post('/api/v1/settings/token/regenerate.json', (c) => {
+    applyToken(newToken());
+    return c.json({ token });
+  });
 
   app.get('/api/v1/im/connection.json', (c) => c.json({ connections: manager.views() }));
 

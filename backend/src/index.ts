@@ -7,13 +7,14 @@ import { drawThingsRunner } from './gen/drawthings';
 import { GenQueue } from './gen/queue';
 import { DEFAULT_MODEL } from './gen';
 import { linejsFactory } from './line';
-import { dataDir, ensureDir, genDir, listenPort } from './paths';
+import { dataDir, ensureDir, genDir, listenHost, listenPort } from './paths';
 import { ConnectionStore } from './store';
 import { loadOrCreateConfig } from './token';
 import { QUEUE_TICK_MS } from './types';
 import { baileysFactory } from './whatsapp';
 
 const port = listenPort();
+const host = listenHost();
 const root = dataDir();
 ensureDir(root);
 const config = loadOrCreateConfig(root, port);
@@ -87,14 +88,19 @@ const app = createApp({
   manager,
   token: config.token,
   port: config.port,
+  configRoot: root,
   ...(gen != null ? { gen: { queue: gen, drawThings, store: genImages, ready: cliReady } } : {}),
 });
 
-console.log(`[companion] listening on http://127.0.0.1:${config.port}`);
+console.log(`[companion] listening on http://${host}:${config.port}`);
+console.log(`[companion] local UI http://127.0.0.1:${config.port}`);
+if (host !== '127.0.0.1' && host !== '::1' && host !== 'localhost') {
+  console.log('[companion] bound beyond loopback: non-local callers must send Authorization: Bearer <token>');
+}
 console.log(`[companion] data ${root}`);
 
 export default {
   port: config.port,
-  hostname: '127.0.0.1',
+  hostname: host,
   fetch: app.fetch,
 };

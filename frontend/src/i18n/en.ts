@@ -13,10 +13,26 @@ const en: Dict = {
   'app.language': 'Language',
 
   'nav.phones': 'Phones',
+  'nav.settings': 'Settings',
   'nav.home': 'Back to phones',
   'nav.rail': 'Sections',
   'nav.menu': 'Menu',
   'nav.health': 'Backend connection',
+
+  'settings.title': 'Settings',
+  'settings.hint': 'This computer can call the API without a token. Other devices need the token below.',
+  'settings.apiToken': 'API token',
+  'settings.tokenHint':
+    'Send it as `Authorization: Bearer <token>` from any device other than this one. Keep it secret.',
+  'settings.localNote': 'Requests from 127.0.0.1 are allowed without a token.',
+  'settings.setToken': 'Set a custom token',
+  'settings.tokenPlaceholder': 'Paste a token',
+  'settings.regenerate': 'Regenerate',
+  'settings.regenerateConfirm':
+    'Generate a new token? Devices using the current token lose access immediately.',
+  'settings.regenerated': 'New token generated',
+  'settings.saved': 'Token saved',
+  'settings.tokenRequired': 'Token is required',
 
   'page.received.title': 'Received',
   'page.sent.title': 'Sent',

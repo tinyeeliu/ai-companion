@@ -1,11 +1,11 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { createApp } from '../src/app';
 import { ConnectionManager } from '../src/manager';
 import { ConnectionStore } from '../src/store';
-import { loadOrCreateConfig } from '../src/token';
+import { loadOrCreateConfig, setConfigToken } from '../src/token';
 import { fakeFactory, type FakeSession } from './fake-whatsapp';
 import { fakeLineFactory, type FakeLineSession } from './fake-line';
 import type { FetchLike } from '../src/webhook';
@@ -29,14 +29,28 @@ afterEach(() => {
   }
 });
 
-function appWith(sessions = new Map<string, FakeSession>(), fetchFn: FetchLike = fetch) {
+function appWith(
+  sessions = new Map<string, FakeSession>(),
+  fetchFn: FetchLike = fetch,
+  local = true,
+) {
   const root = tempDir();
   const manager = new ConnectionManager(new ConnectionStore(root), fakeFactory(sessions), fetchFn);
-  const app = createApp({ manager, token: TOKEN, port: 38888 });
-  return { app, manager, sessions };
+  const app = createApp({
+    manager,
+    token: TOKEN,
+    port: 38888,
+    configRoot: root,
+    ...(local ? {} : { isLocalRequest: () => false }),
+  });
+  return { app, manager, sessions, root };
 }
 
-function lineAppWith(sessions = new Map<string, FakeLineSession>(), fetchFn: FetchLike = fetch) {
+function lineAppWith(
+  sessions = new Map<string, FakeLineSession>(),
+  fetchFn: FetchLike = fetch,
+  local = true,
+) {
   const root = tempDir();
   const manager = new ConnectionManager(
     new ConnectionStore(root),
@@ -44,8 +58,14 @@ function lineAppWith(sessions = new Map<string, FakeLineSession>(), fetchFn: Fet
     fetchFn,
     fakeLineFactory(sessions),
   );
-  const app = createApp({ manager, token: TOKEN, port: 38888 });
-  return { app, manager, sessions };
+  const app = createApp({
+    manager,
+    token: TOKEN,
+    port: 38888,
+    configRoot: root,
+    ...(local ? {} : { isLocalRequest: () => false }),
+  });
+  return { app, manager, sessions, root };
 }
 
 function authHeaders(): Record<string, string> {
@@ -58,7 +78,93 @@ describe('token', () => {
     const first = loadOrCreateConfig(root, 38888);
     const second = loadOrCreateConfig(root, 38888);
     expect(first.token).toBe(second.token);
-    expect(first.token.length).toBeGreaterThan(16);
+    expect(first.token).toMatch(/^[0-9a-f]{32}$/);
+  });
+
+  test('a generated token is a uuid4 with no dashes', () => {
+    const root = tempDir();
+    const { token } = loadOrCreateConfig(root, 38888);
+    expect(token).toMatch(/^[0-9a-f]{32}$/);
+    expect(token).not.toContain('-');
+  });
+
+  test('setConfigToken persists and survives a reload', () => {
+    const root = tempDir();
+    loadOrCreateConfig(root, 38888);
+    setConfigToken(root, 'my-custom-token');
+    expect(loadOrCreateConfig(root, 38888).token).toBe('my-custom-token');
+  });
+
+  test('setConfigToken preserves a custom port', () => {
+    const root = tempDir();
+    loadOrCreateConfig(root, 38000);
+    setConfigToken(root, 'my-custom-token');
+    const stored = JSON.parse(readFileSync(join(root, 'config.json'), 'utf8')) as { port: number };
+    expect(stored.port).toBe(38000);
+  });
+});
+
+describe('settings', () => {
+  test('get, set, and regenerate the token', async () => {
+    const { app } = appWith();
+    const headers = authHeaders();
+
+    const got = await app.request('/api/v1/settings.json', { headers });
+    expect(got.status).toBe(200);
+    expect((await got.json()).token).toBe(TOKEN);
+
+    const bad = await app.request('/api/v1/settings.json', {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({ token: '   ' }),
+    });
+    expect(bad.status).toBe(400);
+
+    const saved = await app.request('/api/v1/settings.json', {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({ token: 'custom-token' }),
+    });
+    expect(saved.status).toBe(200);
+    expect((await saved.json()).token).toBe('custom-token');
+
+    const regen = await app.request('/api/v1/settings/token/regenerate.json', {
+      method: 'POST',
+      headers,
+    });
+    expect(regen.status).toBe(200);
+    const fresh = (await regen.json()).token as string;
+    expect(fresh).toMatch(/^[0-9a-f]{32}$/);
+    expect(fresh).not.toBe('custom-token');
+  });
+
+  test('regenerating invalidates the previous token for external callers', async () => {
+    const { app } = appWith(new Map(), fetch, false);
+    const old = authHeaders();
+    expect((await app.request('/api/v1/settings.json', { headers: old })).status).toBe(200);
+
+    const regen = await app.request('/api/v1/settings/token/regenerate.json', {
+      method: 'POST',
+      headers: old,
+    });
+    const fresh = (await regen.json()).token as string;
+
+    expect((await app.request('/api/v1/settings.json', { headers: old })).status).toBe(401);
+    const withFresh = await app.request('/api/v1/settings.json', {
+      headers: { authorization: `Bearer ${fresh}` },
+    });
+    expect(withFresh.status).toBe(200);
+    expect((await withFresh.json()).token).toBe(fresh);
+  });
+
+  test('a saved token is written to config.json and reloads', async () => {
+    const { app, root } = appWith();
+    await app.request('/api/v1/settings.json', {
+      method: 'PUT',
+      headers: authHeaders(),
+      body: JSON.stringify({ token: 'persisted-token' }),
+    });
+    expect(loadOrCreateConfig(root, 38888).token).toBe('persisted-token');
   });
 });
 
@@ -73,12 +179,42 @@ describe('REST /api/v1/im', () => {
     expect(body.token).toBe(TOKEN);
   });
 
-  test('list without token is 401', async () => {
+  test('loopback callers need no token', async () => {
     const { app } = appWith();
+    const res = await app.request('/api/v1/im/connection.json');
+    expect(res.status).toBe(200);
+    expect((await res.json()).connections).toEqual([]);
+  });
+
+  test('external health omits the token', async () => {
+    const { app } = appWith(new Map(), fetch, false);
+    const res = await app.request('/api/v1/im/health');
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(body.token).toBeUndefined();
+  });
+
+  test('external list without token is 401', async () => {
+    const { app } = appWith(new Map(), fetch, false);
     const res = await app.request('/api/v1/im/connection.json');
     expect(res.status).toBe(401);
     const body = await res.json();
     expect(body.error).toBe('UNAUTHORIZED');
+  });
+
+  test('external caller with the matching token is allowed', async () => {
+    const { app } = appWith(new Map(), fetch, false);
+    const res = await app.request('/api/v1/im/connection.json', { headers: authHeaders() });
+    expect(res.status).toBe(200);
+  });
+
+  test('external caller with a wrong token is 401', async () => {
+    const { app } = appWith(new Map(), fetch, false);
+    const res = await app.request('/api/v1/im/connection.json', {
+      headers: { authorization: 'Bearer not-the-token' },
+    });
+    expect(res.status).toBe(401);
   });
 
   test('list create get qr enable disable webhook send delete', async () => {

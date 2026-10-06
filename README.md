@@ -84,11 +84,11 @@ Companion is the piece that stays up. Your app can restart, deploy, or lose the 
 - Linked phones come back when the app starts. You scan again only after an unlink or a logout.
 - A send is stored before it is transmitted. If the phone is offline, or your cloud socket is down, the message waits and goes out in order when the path is back.
 - The cloud socket reconnects on its own after a network drop. A rejected token stops, so a bad credential does not retry forever.
-- The API binds to this computer only. Phone credentials stay in the app's data folder.
+- The API binds to every interface by default, but only this computer is trusted without a token. Set `COMPANION_HOST=127.0.0.1` to keep it local-only. Phone credentials stay in the app's data folder.
 
 ## Call it from your app
 
-Health needs no token. Every other call uses the Bearer token from that response.
+Health needs no token. From this computer, no other call needs one either. From any other device, every call needs the Bearer token — read it from the Settings page or from health on this machine.
 
 ```bash
 curl -s http://127.0.0.1:38888/api/v1/im/health
@@ -97,6 +97,8 @@ curl -s http://127.0.0.1:38888/api/v1/im/health
 ```json
 {"ok":true,"port":38888,"token":"…"}
 ```
+
+The `token` field appears only for a loopback caller. An external health call returns `{"ok":true,"port":38888}`.
 
 The same value is in `config.json` if you would rather read a file:
 
@@ -385,7 +387,7 @@ The `media` block on inbound events, the digest spellings, and the cache layout 
 
 ## Limits
 
-- Another computer cannot call the API. The listener is `127.0.0.1`.
+- Another computer can call the API, but only with the Bearer token from the Settings page. Loopback needs no token.
 - WhatsApp is a linked-device session. LINE is a personal-account session. Companion is not affiliated with Meta or LY Corporation, and it does not use the WhatsApp Business Cloud API or the LINE Official Account API.
 - Message rows are removed after 7 days. The received and sent counters on each phone stay.
 - Cached media is kept for up to a year of disuse, and WhatsApp serves each blob for about a month. The cache is disposable — `data/media.sqlite` and `data/media/` sit beside `config.json`, and removing them never touches a queued message.

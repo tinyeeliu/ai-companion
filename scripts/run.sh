@@ -29,6 +29,9 @@ PACKAGED_DATA_DIR="$(app_data_dir)/$APP_ID/data"
 
 # Packaged sidecar stays on DEFAULT_PORT 38888. Override only for this script.
 export COMPANION_PORT="${COMPANION_PORT:-38000}"
+# Bind interface for the API. Default 0.0.0.0 (reachable on the LAN; non-loopback
+# callers must send the bearer token). Set COMPANION_HOST=127.0.0.1 to stay private.
+export COMPANION_HOST="${COMPANION_HOST:-0.0.0.0}"
 
 if [ -n "${COMPANION_DATA_DIR:-}" ]; then
   : # caller override wins

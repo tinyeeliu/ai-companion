@@ -7,6 +7,7 @@
   import PageHeader from './PageHeader.svelte';
   import PhonesPage from './PhonesPage.svelte';
   import RenameDialog from './RenameDialog.svelte';
+  import SettingsPage from './SettingsPage.svelte';
   import TitleBar from './TitleBar.svelte';
   import { bootstrap, fetchHealth, listConnections, type Connection, type MessageDirection } from './api';
   import { tr as translate } from './i18n';
@@ -14,10 +15,10 @@
   import { messagesRoute, pageRoute, type TopPageId } from './routes';
 
   /**
-   * Reserved slots, off until there is more than one section: the rail column
-   * and the title bar's overflow menu. See NavRail.svelte and TitleBar.svelte.
+   * The rail is shown now that there is more than one primary page (Phones and
+   * Settings). The title bar's overflow menu stays reserved.
    */
-  const railOpen = false;
+  const railOpen = true;
   const menuOpen = false;
 
   let running = $state(false);
@@ -124,6 +125,8 @@
       <div class="page-body">
         <p class="hint">{$translate('common.loading')}</p>
       </div>
+    {:else if current.id === 'settings'}
+      <SettingsPage />
     {:else if history != null}
       <MessagesPage params={history} />
     {:else}

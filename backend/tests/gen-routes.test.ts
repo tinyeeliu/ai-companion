@@ -34,7 +34,7 @@ function tempDir(): string {
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
 
 /** Records what the queue was asked for, so tests can assert the mapping. */
-function appWith(runner: GenRunner, ready = true) {
+function appWith(runner: GenRunner, ready = true, local = true) {
   const root = tempDir();
   const manager = new ConnectionManager(new ConnectionStore(root), fakeFactory(new Map()), fetch);
   const queue = new GenQueue(runner);
@@ -43,6 +43,7 @@ function appWith(runner: GenRunner, ready = true) {
     manager,
     token: TOKEN,
     port: 38888,
+    ...(local ? {} : { isLocalRequest: () => false }),
     gen: { queue, drawThings, store: genStore(join(root, 'gen')), ready },
   });
   return { app, queue };
@@ -161,7 +162,7 @@ describe('POST /api/v1/image/generations.json', () => {
     expect(body.message).toContain('negative_prompt');
   });
 
-  test('needs no bearer token', async () => {
+  test('needs no bearer token on loopback', async () => {
     const { app } = appWith(okRunner());
     const res = await app.request('/api/v1/image/generations.json', {
       method: 'POST',
@@ -169,6 +170,22 @@ describe('POST /api/v1/image/generations.json', () => {
       body: JSON.stringify({ model: 'm.ckpt', prompt: 'x' }),
     });
     expect(res.status).toBe(200);
+  });
+
+  test('requires the bearer token for an external caller', async () => {
+    const { app } = appWith(okRunner(), true, false);
+    const open = await app.request('/api/v1/image/generations.json', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ model: 'm.ckpt', prompt: 'x' }),
+    });
+    expect(open.status).toBe(401);
+    const authed = await app.request('/api/v1/image/generations.json', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ model: 'm.ckpt', prompt: 'x' }),
+    });
+    expect(authed.status).toBe(200);
   });
 
   test('the generated image is readable without a token', async () => {
@@ -239,10 +256,10 @@ describe('POST /api/v1/image/generations.json', () => {
     expect(res.status).toBe(404);
   });
 
-  test('leaving the image routes open does not open the IM routes', async () => {
-    // The boundary that matters: `/api/v1/image/*` dropped its bearer, and the
-    // channel routes must still reject an unauthenticated caller.
-    const { app } = appWith(okRunner());
+  test('the IM routes still reject an unauthenticated external caller', async () => {
+    // The boundary that matters: the image routes are open only on loopback, and
+    // the channel routes must reject an unauthenticated caller from outside.
+    const { app } = appWith(okRunner(), true, false);
     expect((await app.request('/api/v1/im/connection.json')).status).toBe(401);
     expect(
       (await app.request('/api/v1/im/connection.json', { headers: authHeaders() })).status,

@@ -17,7 +17,7 @@ export type DirectionFilter = 'all' | 'in' | 'out';
  * (breadcrumb, back control, rail). Keep this list in sync with
  * {@link PRIMARY_PAGES}.
  */
-export type TopPageId = 'phones';
+export type TopPageId = 'phones' | 'settings';
 
 export type PageId = TopPageId | 'messages';
 
@@ -55,6 +55,14 @@ export const ROUTES: Record<PageId, RouteMeta> = {
     parent: null,
     nav: 'primary',
   },
+  settings: {
+    navLabelKey: 'nav.settings',
+    titleKey: 'settings.title',
+    hintKey: 'settings.hint',
+    trail: [{ key: 'nav.settings' }],
+    parent: null,
+    nav: 'primary',
+  },
   messages: {
     navLabelKey: 'page.messages.title',
     titleKey: 'page.messages.title',
@@ -66,10 +74,10 @@ export const ROUTES: Record<PageId, RouteMeta> = {
 };
 
 /**
- * Pages the rail lists, in display order. The rail is not shown yet, so this
- * only reserves the shape; every entry also declares `nav: 'primary'` above.
+ * Pages the rail lists, in display order. Every entry also declares
+ * `nav: 'primary'` above.
  */
-export const PRIMARY_PAGES: readonly TopPageId[] = ['phones'];
+export const PRIMARY_PAGES: readonly TopPageId[] = ['phones', 'settings'];
 
 /**
  * The history view, filters included. These live in the hash query string so a
@@ -85,6 +93,7 @@ export interface MessagesParams {
 
 export type MatchedRoute =
   | { id: 'phones'; params: null }
+  | { id: 'settings'; params: null }
   | { id: 'messages'; params: MessagesParams };
 
 /** Matched route for a top-level page. */
@@ -110,6 +119,7 @@ export function messagesRoute(connectionId: string, filters: MessageFilters = {}
 
 export function routeHash(route: MatchedRoute): string {
   if (route.id === 'phones') return '#/';
+  if (route.id === 'settings') return '#/settings';
   const { connectionId, direction, type, status, page } = route.params;
   // Defaults stay out of the URL, so the unfiltered view is just the path.
   const query = new URLSearchParams();
@@ -134,6 +144,9 @@ export function parseRoute(hash = typeof location !== 'undefined' ? location.has
   const raw = hash.startsWith('#') ? hash.slice(1) : hash;
   const url = new URL(raw === '' ? '/' : raw, 'http://companion.local');
   const parts = url.pathname.split('/').filter((part) => part !== '');
+  if (parts[0] === 'settings') {
+    return pageRoute('settings');
+  }
   if (parts[0] === 'messages' && parts[1] != null && parts[1] !== '') {
     // `received` / `sent` are the two legacy single-direction paths. They stay
     // readable so links saved before the merge keep resolving.

@@ -284,7 +284,7 @@ describe('POST /api/v1/im/test.json', () => {
     expect(await res.json()).toMatchObject({ error: 'TIMEOUT' });
   });
 
-  test('port 38000 accepts test.json without a bearer', async () => {
+  test('test.json is open on loopback and locked for an external caller', async () => {
     const sessions = new Map<string, FakeSession>();
     const manager = new ConnectionManager(new ConnectionStore(tempDir()), fakeFactory(sessions));
     managers.push(manager);
@@ -295,8 +295,13 @@ describe('POST /api/v1/im/test.json', () => {
       body: JSON.stringify({ channel: 'whatsapp', payload, maxResponse: 1, maxWait: 1 }),
     });
     expect(open.status).toBe(409);
-    const packaged = createApp({ manager, token: TOKEN, port: 38888 });
-    const locked = await packaged.request('/api/v1/im/test.json', {
+    const external = createApp({
+      manager,
+      token: TOKEN,
+      port: 38000,
+      isLocalRequest: () => false,
+    });
+    const locked = await external.request('/api/v1/im/test.json', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ channel: 'whatsapp', payload, maxResponse: 1, maxWait: 1 }),

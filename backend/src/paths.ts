@@ -31,6 +31,16 @@ export function listenPort(): number {
   return Number.isInteger(n) && n > 0 ? n : DEFAULT_PORT;
 }
 
+/**
+ * Interface the sidecar binds. Defaults to every interface so another device on
+ * the LAN can reach the API; non-loopback callers must then present the bearer
+ * token. Set `COMPANION_HOST=127.0.0.1` to keep it private to this machine.
+ */
+export function listenHost(): string {
+  const raw = process.env.COMPANION_HOST;
+  return raw != null && raw.trim() !== '' ? raw.trim() : '0.0.0.0';
+}
+
 export function configPath(root: string): string {
   return join(root, 'config.json');
 }

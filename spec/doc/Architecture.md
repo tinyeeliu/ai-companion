@@ -17,10 +17,10 @@ Tauri (package/)  →  bun sidecar (backend/)  →  Baileys WhatsApp socket
                   →  webview http://127.0.0.1:38888  (frontend/)
 ```
 
-- Bind: `127.0.0.1` only.
-- Token: first boot writes `data/config.json`. Header `Authorization: Bearer <token>` on every `/api/v1/im/*` route except `GET /api/v1/im/health`. `POST /api/v1/im/test.json` is also open when the process is the local dev server on port 38000. The packaged app on 38888 still requires the bearer.
-- Access: localhost only. Other computers cannot call the API unless the bind address,
-  firewall, and authentication model are deliberately changed.
+- Bind: `COMPANION_HOST` (default `0.0.0.0`, every interface). Set `COMPANION_HOST=127.0.0.1` to keep the API on this machine.
+- Token: first boot writes `data/config.json` with a uuid4 whose dashes are stripped (32 hex characters). The token is stored **only** in `config.json` — never SQLite — and can be viewed, set, or regenerated from the Settings page.
+- Auth: loopback callers (`127.0.0.0/8`, `::1`, IPv4-mapped equivalents) are trusted and need no token. Any other source must send `Authorization: Bearer <token>` on every `/api/*` route. `GET /api/v1/im/health` is public from anywhere, but echoes the token only to a loopback caller. The client address is read from the socket, never from `X-Forwarded-For`.
+- Access: the default bind is reachable on the LAN, and every non-loopback caller is authenticated by the token above.
 - Data: `COMPANION_DATA_DIR` or `companion/data` (packaged / default). Installed app uses Application Support. `scripts/run.sh` uses `COMPANION_DATA_DIR` when set, else the Application Support dir when it exists, else `companion/data-dev`.
 - Frontend files: `COMPANION_FRONTEND_DIR`, else `companion/frontend/dist` when built, else `companion/frontend`. Dev Vite is `:5178` and proxies `/api` to `:38000`.
 
@@ -29,7 +29,9 @@ Tauri (package/)  →  bun sidecar (backend/)  →  Baileys WhatsApp socket
 | Path | Role |
 |---|---|
 | `backend/src/index.ts` | Listen, restore enabled sessions |
-| `backend/src/app.ts` | Hono routes and bearer middleware |
+| `backend/src/app.ts` | Hono routes and the loopback/bearer guard |
+| `backend/src/auth.ts` | Loopback detection and constant-time token compare |
+| `backend/src/token.ts` | `config.json` token load/generate/set |
 | `backend/src/manager.ts` | Connection lifecycle, metrics, reconnect |
 | `backend/src/channel.ts` | Shared session contract (`whatsapp` \| `line`) |
 | `backend/src/whatsapp.ts` | Only Baileys import |
@@ -202,31 +204,42 @@ the routes answer `503 CLI_UNAVAILABLE` and the rest of Companion is unaffected.
 
 ## REST
 
+Auth column: `loopback` means a caller on this machine needs no token; every other caller needs `Authorization: Bearer <token>`.
+
 | Method | Path | Auth |
 |---|---|---|
-| GET | `/api/v1/im/health` | — |
-| GET | `/api/v1/im/connection.json` | bearer |
-| POST | `/api/v1/im/connection.json` | bearer |
-| GET | `/api/v1/im/connection/:id.json` | bearer |
-| DELETE | `/api/v1/im/connection/:id.json` | bearer |
-| POST | `/api/v1/im/connection/:id/enable.json` | bearer |
-| POST | `/api/v1/im/connection/:id/disable.json` | bearer |
-| GET | `/api/v1/im/connection/:id/qr.json` | bearer |
-| POST | `/api/v1/im/connection/:id/message.json` | bearer |
-| GET | `/api/v1/im/connection/:id/messages.json` | bearer |
-| GET | `/api/v1/im/connection/:id/messages/:messageId.json` | bearer |
-| POST | `/api/v1/im/replay.json` | bearer |
-| POST | `/api/v1/im/test.json` | bearer (open on :38000) |
-| PUT | `/api/v1/im/connection/:id.json` | bearer |
-| PUT | `/api/v1/im/connection/:id/webhook.json` | bearer |
-| PUT | `/api/v1/im/connection/:id/cloud.json` | bearer |
-| POST | `/api/v1/image/generations.json` | — |
-| GET | `/api/v1/image/generations/:id.png` | — |
+| GET | `/api/v1/im/health` | — (public; token echoed to loopback only) |
+| GET | `/api/v1/im/connection.json` | loopback |
+| POST | `/api/v1/im/connection.json` | loopback |
+| GET | `/api/v1/im/connection/:id.json` | loopback |
+| DELETE | `/api/v1/im/connection/:id.json` | loopback |
+| POST | `/api/v1/im/connection/:id/enable.json` | loopback |
+| POST | `/api/v1/im/connection/:id/disable.json` | loopback |
+| GET | `/api/v1/im/connection/:id/qr.json` | loopback |
+| POST | `/api/v1/im/connection/:id/message.json` | loopback |
+| GET | `/api/v1/im/connection/:id/messages.json` | loopback |
+| GET | `/api/v1/im/connection/:id/messages/:messageId.json` | loopback |
+| POST | `/api/v1/im/replay.json` | loopback |
+| POST | `/api/v1/im/test.json` | loopback |
+| PUT | `/api/v1/im/connection/:id.json` | loopback |
+| PUT | `/api/v1/im/connection/:id/webhook.json` | loopback |
+| PUT | `/api/v1/im/connection/:id/cloud.json` | loopback |
+| GET | `/api/v1/settings.json` | loopback |
+| PUT | `/api/v1/settings.json` | loopback |
+| POST | `/api/v1/settings/token/regenerate.json` | loopback |
+| POST | `/api/v1/image/generations.json` | loopback |
+| GET | `/api/v1/image/generations/:id.png` | loopback |
 
 The two image routes live outside `/api/v1/im/*` because they are not about a
-channel, and they are deliberately **not** behind the bearer: image generation is
-a local, single-tenant capability on a loopback-bound sidecar, so it stays
-reachable without a token. Every `/api/v1/im/*` route still requires one.
+channel. They follow the same rule as everything else: open on loopback, bearer
+required from any other source.
+
+Settings endpoints manage the token itself. `GET /api/v1/settings.json` returns
+`{ "token": "…" }`; `PUT` with `{ "token": "…" }` stores a custom value (blank is
+`400 INVALID_PARAM`); `POST /api/v1/settings/token/regenerate.json` mints a fresh
+uuid4. A change takes effect immediately — the guard reads the live value — and
+is written to `config.json`. Because loopback needs no token, regenerating from
+the Settings page never locks out the local UI.
 
 Every JSON route carries the repo's `.json` suffix on its last path segment;
 `GET /api/v1/im/health` is the one exception, because the SPA and packaged probe
@@ -301,7 +314,8 @@ LINEJS (`@evex/linejs`) is an unofficial personal-account client. Not the Offici
 - HTTP request and response JSON is logged with `[companion][http]` prefixes.
 - Outbound webhook JSON and webhook responses are logged.
 - The dashboard polling endpoints `GET /api/v1/im/health` and
-  `GET /api/v1/im/connection.json` are intentionally not logged.
+  `GET /api/v1/im/connection.json` are intentionally not logged, and neither are
+  the `/api/v1/settings*` routes, which carry the bearer token.
 - `Uint8Array` values are logged as byte counts rather than base64 payloads.
 - Errors use `console.error` with the original error object so the stack trace is
   printed.
