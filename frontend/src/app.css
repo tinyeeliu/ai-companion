@@ -993,6 +993,12 @@ td.summary {
   gap: 10px;
 }
 
+.field-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
 .field-label {
   font-size: 13px;
   font-weight: 600;
