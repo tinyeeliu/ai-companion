@@ -17,6 +17,26 @@ function writeConfig(root: string, config: AppConfig): void {
   writeFileSync(configPath(root), `${JSON.stringify(config, null, 2)}\n`);
 }
 
+/**
+ * The persisted models directory, or null when unset/unreadable.
+ *
+ * Read separately from the token because the two are written by different
+ * callers: a token change in Settings must not drop a models directory the
+ * operator set by hand.
+ */
+export function configModelsDir(root: string): string | null {
+  const file = configPath(root);
+  if (!existsSync(file)) return null;
+  try {
+    const parsed = JSON.parse(readFileSync(file, 'utf8')) as Partial<AppConfig>;
+    return typeof parsed.modelsDir === 'string' && parsed.modelsDir.trim() !== ''
+      ? parsed.modelsDir.trim()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 export function loadOrCreateConfig(root: string, port: number = DEFAULT_PORT): AppConfig {
   ensureDir(root);
   const file = configPath(root);
@@ -26,6 +46,7 @@ export function loadOrCreateConfig(root: string, port: number = DEFAULT_PORT): A
       const cfg: AppConfig = {
         token: parsed.token,
         port: typeof parsed.port === 'number' ? parsed.port : port,
+        modelsDir: configModelsDir(root),
       };
       if (cfg.port !== port) {
         cfg.port = port;
@@ -34,7 +55,7 @@ export function loadOrCreateConfig(root: string, port: number = DEFAULT_PORT): A
       return cfg;
     }
   }
-  const cfg: AppConfig = { token: newToken(), port };
+  const cfg: AppConfig = { token: newToken(), port, modelsDir: null };
   writeConfig(root, cfg);
   return cfg;
 }
@@ -57,7 +78,7 @@ export function setConfigToken(root: string, token: string): AppConfig {
       /* unreadable config: fall back to the default port */
     }
   }
-  const cfg: AppConfig = { token, port };
+  const cfg: AppConfig = { token, port, modelsDir: configModelsDir(root) };
   writeConfig(root, cfg);
   return cfg;
 }

@@ -22,6 +22,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { GenJob, GenResult, GenRunner } from './queue';
+import { logJson } from '../log';
 
 export const DEFAULT_CLI = 'draw-things-cli';
 
@@ -63,6 +64,15 @@ export interface DrawThingsOptions {
   workDir?: string;
   /** Extra args appended verbatim; last, so they can override the defaults. */
   extraArgs?: string[];
+  /**
+   * Models directory passed to every CLI subcommand as `--models-dir`.
+   *
+   * Without it the CLI falls back to its own internal default
+   * (`~/Library/Containers/com.liuliu.draw-things/Data/Documents/Models`), so a
+   * model downloaded to an external drive is invisible and generation fails
+   * with a misleading "files are missing" error even though the file exists.
+   */
+  modelsDir?: string;
 }
 
 export interface DrawThings extends GenRunner {
@@ -72,13 +82,44 @@ export interface DrawThings extends GenRunner {
   listModels(): Promise<string[]>;
   /** False when the binary is missing or not runnable on this machine. */
   available(): Promise<boolean>;
+  /**
+   * The models directory every subcommand is pointed at, or undefined when the
+   * CLI picks its own default. Surfaced so boot can log and verify it.
+   */
+  modelsDirectory(): string | undefined;
+}
+
+/**
+ * Companion's own name wins, then the CLI's native variable so an existing
+ * `DRAWTHINGS_MODELS_DIR` setup keeps working unchanged.
+ */
+export function resolveModelsDir(
+  explicit: string | undefined,
+  env: Record<string, string | undefined> = process.env,
+): string | undefined {
+  for (const value of [explicit, env.COMPANION_DRAWTHINGS_MODELS_DIR, env.DRAWTHINGS_MODELS_DIR]) {
+    if (value != null && value.trim() !== '') return value.trim();
+  }
+  return undefined;
 }
 
 export function drawThingsRunner(options: DrawThingsOptions = {}): DrawThings {
   const bin = options.bin ?? process.env.COMPANION_DRAWTHINGS_BIN ?? DEFAULT_CLI;
   const envTimeout = Number(process.env.COMPANION_GEN_TIMEOUT_MS ?? '');
   const timeoutMs = options.timeoutMs ?? (Number.isFinite(envTimeout) && envTimeout > 0 ? envTimeout : DEFAULT_TIMEOUT_MS);
+  const modelsDir = resolveModelsDir(options.modelsDir);
   let cachedModels: string[] | null = null;
+
+  /**
+   * `--models-dir` has to reach every subcommand, not just `generate`.
+   * `models ensure` in particular is what warms the default model at boot, and
+   * pointed at the wrong directory it would start a duplicate multi-gigabyte
+   * download of a model that already exists elsewhere.
+   */
+  function withModelsDir(args: string[]): string[] {
+    if (modelsDir == null) return args;
+    return [...args, '--models-dir', modelsDir];
+  }
 
   async function exec(args: string[]): Promise<{ code: number | null; stdout: string; stderr: string }> {
     return await new Promise((resolve, reject) => {
@@ -110,7 +151,9 @@ export function drawThingsRunner(options: DrawThingsOptions = {}): DrawThings {
       if (cachedModels != null) return cachedModels;
       // `--offline` keeps this off the network; the catalog is cached on disk by
       // the CLI itself, and a cold cache still answers from the shipped list.
-      const { code, stdout } = await exec(['models', 'list', '--offline']);
+      const { code, stdout } = await exec(
+        withModelsDir(['models', 'list', '--offline', '--downloaded-only']),
+      );
       if (code !== 0) return [];
       const models: string[] = [];
       for (const line of stdout.split('\n')) {
@@ -126,10 +169,14 @@ export function drawThingsRunner(options: DrawThingsOptions = {}): DrawThings {
     },
 
     async ensureModel(model: string): Promise<void> {
-      const { code, stderr } = await exec(['models', 'ensure', '--model', model]);
+      const { code, stderr } = await exec(withModelsDir(['models', 'ensure', '--model', model]));
       if (code !== 0) {
-        throw new GenFailedError(firstLine(stderr) || `could not ensure model ${model}`, code);
+        throw new GenFailedError(cliErrorText(stderr) || `could not ensure model ${model}`, code);
       }
+    },
+
+    modelsDirectory(): string | undefined {
+      return modelsDir;
     },
 
     async run(job: GenJob): Promise<GenResult> {
@@ -137,13 +184,20 @@ export function drawThingsRunner(options: DrawThingsOptions = {}): DrawThings {
       // leftover from a killed run must never be mistaken for a fresh result.
       const dir = options.workDir != null ? options.workDir : await mkdtemp(join(tmpdir(), 'companion-gen-'));
       const outputPath = join(dir, `${Bun.randomUUIDv7()}.png`);
-      const args = buildArgs(job, outputPath);
+      const args = buildArgs(job, outputPath, modelsDir);
       try {
         const outcome = await runWithDeadline(bin, args, timeoutMs);
         if (outcome.timedOut) throw new GenTimeoutError(timeoutMs);
         if (outcome.code !== 0) {
+          // Log the exact argv: a wrong-directory failure is indistinguishable
+          // from a missing model unless you can see what was actually passed.
+          logJson('outgoing', 'http', 'gen.cli_failed', {
+            args,
+            code: outcome.code,
+            modelsDir: modelsDir ?? null,
+          });
           throw new GenFailedError(
-            firstLine(outcome.stderr) || `draw-things-cli exited ${outcome.code}`,
+            withSearchedDir(cliErrorText(outcome.stderr) || explainExit(outcome.code), modelsDir, outcome.stderr),
             outcome.code,
           );
         }
@@ -169,12 +223,13 @@ export function drawThingsRunner(options: DrawThingsOptions = {}): DrawThings {
  * `--output` and the non-TTY flags are mandatory (see the file header); the
  * rest are only passed when the caller resolved them.
  */
-export function buildArgs(job: GenJob, outputPath: string): string[] {
+export function buildArgs(job: GenJob, outputPath: string, modelsDir?: string): string[] {
   const args = ['generate', '--model', job.model, '--prompt', job.prompt, '--output', outputPath];
   if (job.width != null) args.push('--width', String(job.width));
   if (job.height != null) args.push('--height', String(job.height));
   if (job.steps != null) args.push('--steps', String(job.steps));
   args.push('--disable-preview', '--offline');
+  if (modelsDir != null && modelsDir !== '') args.push('--models-dir', modelsDir);
   return args;
 }
 
@@ -236,10 +291,51 @@ function parseDurationMs(stdout: string): number | undefined {
 }
 
 /** CLI failures print a single `Error: ...` line; the rest is noise. */
-function firstLine(stderr: string): string {
+/**
+ * Exit 133 is `SIGTRAP`: the CLI aborts with *no* stderr when a config enum
+ * ordinal is out of range. Named specially because "exited 133" alone gives a
+ * caller nothing to act on.
+ */
+function explainExit(code: number | null): string {
+  if (code === 133) {
+    return 'draw-things-cli aborted (133) with no output — usually an invalid enum ordinal in a config file';
+  }
+  return `draw-things-cli exited ${code}`;
+}
+
+/**
+ * A missing-files failure names the absent files but not *where* the CLI looked,
+ * which makes a wrong-`--models-dir` problem read like "you need to download
+ * this model". Naming the directory turns an hour of diagnosis into one step, so
+ * the suffix is added only for that specific error shape — other failures keep
+ * their original text.
+ *
+ * When no directory was configured the CLI used its own default, which it does
+ * not print; saying so explicitly is more useful than staying silent.
+ */
+export function withSearchedDir(message: string, modelsDir: string | undefined, stderr: string): string {
+  const missing = /model files are missing|Missing file|Missing files/i.test(stderr);
+  if (!missing) return message;
+  return modelsDir != null
+    ? `${message} (searched models directory: ${modelsDir})`
+    : `${message} (searched the CLI's default models directory; set modelsDir in data/config.json to point elsewhere)`;
+}
+
+/**
+ * The CLI's useful failure text is often multi-line — a missing-files error
+ * names each absent model file on its own line — so run them together rather
+ * than reporting only the header and hiding the actionable part.
+ *
+ * Trailing boilerplate (`Usage:` and the help hint) is dropped: it is the same
+ * for every error and would drown the real message.
+ */
+function cliErrorText(stderr: string): string {
+  const lines: string[] = [];
   for (const line of stderr.split('\n')) {
     const trimmed = line.trim();
-    if (trimmed !== '') return trimmed;
+    if (trimmed === '') continue;
+    if (trimmed.startsWith('Usage:') || trimmed.startsWith('See ')) break;
+    lines.push(trimmed);
   }
-  return '';
+  return lines.join(' ');
 }

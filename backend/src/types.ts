@@ -170,6 +170,18 @@ export function recordDisconnectAt(at: number[] | undefined, now = Date.now()): 
 export interface AppConfig {
   token: string;
   port: number;
+  /**
+   * Models directory handed to `draw-things-cli` as `--models-dir`.
+   *
+   * Persisted here rather than left to the environment because Companion's
+   * lifecycle is owned by an external supervisor (Devctl spawns
+   * `companion/scripts/run.sh` with no env of its own), so a variable exported
+   * in some developer's shell never reaches the running process. A value in this
+   * file travels with the data directory and works however Companion was started.
+   *
+   * `null`/absent means "let the CLI use its own default".
+   */
+  modelsDir?: string | null;
 }
 
 export interface InboundText {
