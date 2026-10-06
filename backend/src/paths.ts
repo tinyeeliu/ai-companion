@@ -39,6 +39,14 @@ export function channelRoot(root: string, channel: Channel): string {
   return join(root, channel);
 }
 
+/**
+ * Generated images kept for `response_format: "url"`. A cache, not storage —
+ * clearing it is one `rm -rf data/gen`.
+ */
+export function genDir(root: string): string {
+  return join(root, 'gen');
+}
+
 export function whatsappRoot(root: string): string {
   return channelRoot(root, 'whatsapp');
 }

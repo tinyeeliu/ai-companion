@@ -9,11 +9,17 @@ import { isHttpUrl, isWsUrl } from './webhook';
 import { assertId } from './store';
 import { isDirectionFilter, isMessageStatus, type MessageQuery } from './messages';
 import { logJson } from './log';
+import { registerImageRoutes, type ImageRoutesOptions } from './gen';
 
 export interface AppOptions {
   manager: ConnectionManager;
   token: string;
   port: number;
+  /**
+   * Image generation. Omitted where the CLI is unavailable or in tests that do
+   * not exercise it — the routes are then simply not mounted.
+   */
+  gen?: ImageRoutesOptions;
 }
 
 /**
@@ -86,17 +92,29 @@ export function createApp(options: AppOptions): Hono {
 
   app.get('/api/v1/im/health', (c) => c.json({ ok: true, port, token }));
 
-  app.use('/api/v1/im/*', async (c, next) => {
-    if (c.req.path === '/api/v1/im/health') return next();
+  // Bearer on every IM route except the one public health probe. `test.json` is
+  // also open on the local dev port.
+  function requiresAuth(path: string): boolean {
+    if (path === '/api/v1/im/health') return false;
     // Local dev (`scripts/run.sh`, :38000) calls test.json from Bruno without a
     // token. The packaged app on 38888 still requires the bearer.
-    if (port === 38000 && c.req.path === '/api/v1/im/test.json') return next();
+    if (port === 38000 && path === '/api/v1/im/test.json') return false;
+    return true;
+  }
+
+  app.use('/api/v1/im/*', async (c, next) => {
+    if (!requiresAuth(c.req.path)) return next();
     const got = bearerToken(c.req.header('authorization'));
     if (got !== token) {
       return c.json({ error: 'UNAUTHORIZED', message: 'Bearer token required' }, 401);
     }
     return next();
   });
+
+  // `/api/v1/image/*` is deliberately NOT behind the bearer. Image generation is
+  // a local, single-tenant capability on a loopback-bound sidecar, and the plan
+  // asked for it to stay reachable without a token. Everything it can reach is
+  // local: a model on this machine and files this process wrote itself.
 
   app.get('/api/v1/im/connection.json', (c) => c.json({ connections: manager.views() }));
 
@@ -285,6 +303,11 @@ export function createApp(options: AppOptions): Hono {
     await manager.remove(stripFormatSuffix(c.req.param('id'), '.json'));
     return c.json({ ok: true });
   });
+
+  // Mounted before the SPA catch-all so the static fallback cannot swallow it.
+  if (options.gen != null) {
+    registerImageRoutes(app, options.gen);
+  }
 
   app.get('/*', serveStatic({ root: FRONTEND_DIR }));
   return app;

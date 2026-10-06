@@ -45,6 +45,10 @@ Tauri (package/)  →  bun sidecar (backend/)  →  Baileys WhatsApp socket
 | `backend/src/cloud/link.ts` | Per-connection outbound WSS client |
 | `backend/src/cloud/queue.ts` | Per-direction serial delivery worker (both directions) |
 | `backend/src/webhook.ts` | Outbound POST, 10s timeout, 3 tries |
+| `backend/src/gen/queue.ts` | Serial queue: one `draw-things-cli` process at a time |
+| `backend/src/gen/drawthings.ts` | The only place that spawns the CLI; enforces its timeout |
+| `backend/src/gen/store.ts` | `data/gen/{id}.png` cache for `response_format: "url"` |
+| `backend/src/gen/index.ts` | OpenAI-shaped routes, validation, `response_format` disposition |
 
 | `backend/src/disconnect.ts` | Close-code map (401/440/405/515/500) |
 
@@ -62,6 +66,7 @@ data/line/{id}/auth/token         # LINE auth token; never logged
 data/messages.sqlite              # ChatMessage: history log + durable delivery queue
 data/media.sqlite                 # MediaObject / MediaUrl: the media cache meta
 data/media/{sha256}.{ext}         # cached plaintext, content-addressed
+data/gen/{id}.png                 # generated image kept for response_format:"url"; a cache, not storage
 ```
 
 Inbound and outbound chat is stored in SQLite table `"ChatMessage"` for 7 days. Prune runs at boot and every 24 hours. Dashboard Received/Sent counters stay as lifetime totals in `meta.json`: Received increments on every vendor inbound message, Sent increments on every outbound queue write — a dashboard `POST /connection/:id/message` and a cloud `sendMessage`/`sendCompactMessage` invoke alike.
@@ -137,26 +142,91 @@ Companion-generated id (WhatsApp callers read `key.id`), so the real vendor id i
 not known to the cloud. `readMessages`, `sendPresenceUpdate`, and `relayMessage`
 are not messages and still run inline.
 
+## Image generation
+
+`POST /api/v1/image/generations.json` speaks the **OpenAI Images API**, and only
+that: `model`, `prompt`, `n`, `size`, `quality`, `response_format`, `user`.
+Unknown fields are a `400`, not a shrug, so a caller sending a Bifrost or Draw
+Things field (`negative_prompt`, `num_inference_steps`, `seed`) learns immediately
+rather than silently getting different output than it asked for.
+
+Two deliberate divergences from OpenAI: errors use this repo's `{ error, message }`
+envelope, and the path is not `/v1/images/generations`, so an OpenAI SDK cannot be
+pointed here unchanged.
+
+Generation runs the local `draw-things-cli`, one-shot, synchronously:
+
+| Request field | Becomes |
+| --- | --- |
+| `prompt` | `--prompt` |
+| `model` | `--model` |
+| `size` | `--width` / `--height`; `auto` omits both |
+| `n` | N sequential runs, one entry in `data[]` each (max 4) |
+| `quality` | `low` → 4 steps, `medium`/`standard` → 6, `high`/`auto` → the model's own |
+| `response_format` | `url` (default) persists under `data/gen/`; `b64_json` returns inline |
+| `user` | accepted, unused |
+
+`--output`, `--disable-preview` and `--offline` are always passed. The first is
+mandatory rather than cosmetic: with no output path *and* no TTY the CLI writes no
+file and shows no preview, so a server-side invocation would return nothing. The
+last keeps a request from silently starting a multi-gigabyte download — models are
+ensured at boot instead, and every `generate` therefore runs offline.
+
+### The serial queue
+
+**Every Draw Things operation runs one at a time.** `GenQueue` in `src/gen/queue.ts`
+is the only thing allowed to start a CLI process, and the invariant is one child
+alive at a moment: `drain()` awaits each run to completion before it takes the next
+job. Two concurrent `generate` processes would mean two multi-gigabyte model loads
+racing for the same memory — a swap storm or an OOM kill, not a slow response.
+
+Unlike the message queue this one is **not** persisted. A generation is worthless
+once the caller disconnects — no row to retry, no phone to reconnect — so the unit
+of work is a promise in memory and a restart legitimately drops it.
+
+- The request is synchronous: it holds its HTTP connection for the whole run. A
+  cold FLUX.2 load measured ~83s, so Bruno sets `timeout: 0`.
+- Backlog is capped at `GEN_MAX_PENDING` (8); beyond that a caller gets
+  `503 QUEUE_FULL` immediately rather than queueing behind minutes of work.
+- The CLI has no timeout of its own, so the adapter enforces one and `SIGKILL`s a
+  child that overruns — a wedged process would otherwise hold the single slot
+  *and* the machine's memory.
+- A failed or timed-out run frees the slot at once; it never wedges the queue.
+
+`data/gen/` is a cache, not storage: the bytes are reproducible from the prompt, so
+images retire after a day and the folder is capped at 200, oldest evicted first.
+Clearing it is one `rm -rf data/gen`.
+
+The whole feature degrades rather than fails: if `draw-things-cli` is not on PATH,
+the routes answer `503 CLI_UNAVAILABLE` and the rest of Companion is unaffected.
+
 ## REST
 
-| Method | Path |
-|---|---|
-| GET | `/api/v1/im/health` |
-| GET | `/api/v1/im/connection.json` |
-| POST | `/api/v1/im/connection.json` |
-| GET | `/api/v1/im/connection/:id.json` |
-| DELETE | `/api/v1/im/connection/:id.json` |
-| POST | `/api/v1/im/connection/:id/enable.json` |
-| POST | `/api/v1/im/connection/:id/disable.json` |
-| GET | `/api/v1/im/connection/:id/qr.json` |
-| POST | `/api/v1/im/connection/:id/message.json` |
-| GET | `/api/v1/im/connection/:id/messages.json` |
-| GET | `/api/v1/im/connection/:id/messages/:messageId.json` |
-| POST | `/api/v1/im/replay.json` |
-| POST | `/api/v1/im/test.json` |
-| PUT | `/api/v1/im/connection/:id.json` |
-| PUT | `/api/v1/im/connection/:id/webhook.json` |
-| PUT | `/api/v1/im/connection/:id/cloud.json` |
+| Method | Path | Auth |
+|---|---|---|
+| GET | `/api/v1/im/health` | — |
+| GET | `/api/v1/im/connection.json` | bearer |
+| POST | `/api/v1/im/connection.json` | bearer |
+| GET | `/api/v1/im/connection/:id.json` | bearer |
+| DELETE | `/api/v1/im/connection/:id.json` | bearer |
+| POST | `/api/v1/im/connection/:id/enable.json` | bearer |
+| POST | `/api/v1/im/connection/:id/disable.json` | bearer |
+| GET | `/api/v1/im/connection/:id/qr.json` | bearer |
+| POST | `/api/v1/im/connection/:id/message.json` | bearer |
+| GET | `/api/v1/im/connection/:id/messages.json` | bearer |
+| GET | `/api/v1/im/connection/:id/messages/:messageId.json` | bearer |
+| POST | `/api/v1/im/replay.json` | bearer |
+| POST | `/api/v1/im/test.json` | bearer (open on :38000) |
+| PUT | `/api/v1/im/connection/:id.json` | bearer |
+| PUT | `/api/v1/im/connection/:id/webhook.json` | bearer |
+| PUT | `/api/v1/im/connection/:id/cloud.json` | bearer |
+| POST | `/api/v1/image/generations.json` | — |
+| GET | `/api/v1/image/generations/:id.png` | — |
+
+The two image routes live outside `/api/v1/im/*` because they are not about a
+channel, and they are deliberately **not** behind the bearer: image generation is
+a local, single-tenant capability on a loopback-bound sidecar, so it stays
+reachable without a token. Every `/api/v1/im/*` route still requires one.
 
 Every JSON route carries the repo's `.json` suffix on its last path segment;
 `GET /api/v1/im/health` is the one exception, because the SPA and packaged probe
