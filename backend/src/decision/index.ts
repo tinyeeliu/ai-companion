@@ -2,7 +2,8 @@
  * @fileoverview System One route plus the Setup page's decision controls.
  *
  * `POST /api/v1/systemone.json` returns the mlx-decision success body.
- * Errors stay Companion `{ error, message }`.
+ * `POST /api/v1/decisions.json` accepts an OpenAI Decisions body and returns
+ * that shape. Both call the same queue. Errors stay Companion `{ error, message }`.
  */
 import type { Hono } from 'hono';
 import { HttpError } from '../types';
@@ -10,6 +11,7 @@ import { parseDecisionRequest } from './parse';
 import { DecisionQueueFullError, type DecisionQueue } from './queue';
 import { DecisionFailedError, DecisionTimeoutError } from './session';
 import type { DecisionSetup } from './setup';
+import { openaiToSystemOne, systemOneToOpenai } from './translate';
 
 export interface DecisionRoutesOptions {
   queue: DecisionQueue;
@@ -21,14 +23,19 @@ export function registerDecisionRoutes(app: Hono, options: DecisionRoutesOptions
 
   app.post('/api/v1/systemone.json', async (c) => {
     const job = parseDecisionRequest(await readJson(c));
-    if (!(await setup.downloaded())) {
-      throw new HttpError(503, 'DECISION_NOT_READY', 'Decision model is not downloaded');
-    }
-    if (!setup.enabled()) {
-      throw new HttpError(503, 'DECISION_DISABLED', 'Decision is turned off');
-    }
+    await requireReady(setup);
     try {
       return c.json(await queue.submit(job));
+    } catch (error) {
+      throw mapDecisionError(error);
+    }
+  });
+
+  app.post('/api/v1/decisions.json', async (c) => {
+    const { job, trace } = openaiToSystemOne(await readJson(c));
+    await requireReady(setup);
+    try {
+      return c.json(systemOneToOpenai(await queue.submit(job), trace));
     } catch (error) {
       throw mapDecisionError(error);
     }
@@ -46,6 +53,15 @@ export function registerDecisionRoutes(app: Hono, options: DecisionRoutesOptions
     }
     return c.json(await setup.setEnabled(body.enabled));
   });
+}
+
+async function requireReady(setup: DecisionSetup): Promise<void> {
+  if (!(await setup.downloaded())) {
+    throw new HttpError(503, 'DECISION_NOT_READY', 'Decision model is not downloaded');
+  }
+  if (!setup.enabled()) {
+    throw new HttpError(503, 'DECISION_DISABLED', 'Decision is turned off');
+  }
 }
 
 function mapDecisionError(error: unknown): HttpError {

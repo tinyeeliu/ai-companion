@@ -8,8 +8,9 @@ import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { createApp } from '../src/app';
 import { modelMarker, pythonBin, pythonDir } from '../src/decision/layout';
-import { parseDecisionRequest } from '../src/decision/parse';
-import { DecisionQueue } from '../src/decision/queue';
+import { parseDecisionRequest, type DecisionJob } from '../src/decision/parse';
+import { DecisionQueue, type DecisionResult } from '../src/decision/queue';
+import { openaiToSystemOne, systemOneToOpenai } from '../src/decision/translate';
 import type { DecisionEngine } from '../src/decision/session';
 import { DecisionSetup } from '../src/decision/setup';
 import { ConnectionManager } from '../src/manager';
@@ -47,7 +48,14 @@ const QUESTION = {
   },
 };
 
-function appWith(root: string, session: DecisionEngine, accelerated = true) {
+function appWith(
+  root: string,
+  session: DecisionEngine,
+  accelerated = true,
+  run: (job: DecisionJob) => Promise<DecisionResult> = async () => {
+    throw new Error('decision ran');
+  },
+) {
   const manager = new ConnectionManager(new ConnectionStore(root), fakeFactory(new Map()), fetch);
   writeFileSync(join(root, 'config.json'), JSON.stringify({ token: TOKEN, port: 38888, decisionEnabled: false }));
   let fetched = false;
@@ -66,11 +74,7 @@ function appWith(root: string, session: DecisionEngine, accelerated = true) {
     port: 38888,
     configRoot: root,
     decision: {
-      queue: new DecisionQueue({
-        async run() {
-          throw new Error('decision ran');
-        },
-      }),
+      queue: new DecisionQueue({ run }),
       setup,
     },
   });
@@ -123,6 +127,102 @@ describe('parseDecisionRequest', () => {
   });
 });
 
+describe('openaiToSystemOne', () => {
+  const body = {
+    model: 'gpt-6-luna',
+    input: [{ role: 'user', content: [{ type: 'input_text', text: '盒子破了' }] }],
+    questions: [
+      { type: 'predicate', name: 'damaged', instructions: 'Is it damaged?' },
+      {
+        type: 'choice',
+        name: 'ok',
+        instructions: 'Is the report accepted?',
+        choices: [{ value: true, description: 'yes' }, { value: false, description: 'no' }],
+      },
+      {
+        type: 'score',
+        instructions: 'How urgent is it?',
+        levels: [{ label: 'low' }, { label: 'high', description: 'Act today' }],
+      },
+    ],
+  };
+
+  test('maps predicate, a boolean choice, and score labels', () => {
+    const { job, trace } = openaiToSystemOne(body);
+    expect(job.state).toBe('盒子破了');
+    expect(job.questions.damaged).toEqual({ type: 'noul', instructions: 'Is it damaged?' });
+    expect(job.questions.ok).toEqual({
+      type: 'choice',
+      instructions: 'Is the report accepted?',
+      criteria: { true: 'yes', false: 'no' },
+    });
+    expect(job.questions['#2']).toEqual({
+      type: 'score',
+      instructions: 'How urgent is it?',
+      criteria: ['low', 'Act today'],
+    });
+    const result: DecisionResult = {
+      model: 'laya-multilingual',
+      answers: {
+        damaged: { type: 'noul', noul: 0.95 },
+        ok: { type: 'choice', choice: 'true', confidence: 0.8, probabilities: { true: 0.8, false: 0.2 } },
+        '#2': { type: 'score', score: 1.3, confidence: 0.6, probabilities: { '0': 0.1, '1': 0.9 } },
+      },
+      usage: { input_tokens: 44, output_tokens: 0 },
+    };
+    expect(systemOneToOpenai(result, trace)).toEqual({
+      model: 'laya-multilingual',
+      answers: [
+        { type: 'predicate', name: 'damaged', probability: 0.95 },
+        {
+          type: 'choice',
+          name: 'ok',
+          choice: true,
+          confidence: 0.8,
+          probabilities: [
+            { value: true, probability: 0.8 },
+            { value: false, probability: 0.2 },
+          ],
+        },
+        {
+          type: 'score',
+          name: null,
+          score: 1.3,
+          confidence: 0.6,
+          probabilities: [
+            { value: 0, label: 'low', probability: 0.1 },
+            { value: 1, label: 'high', probability: 0.9 },
+          ],
+        },
+      ],
+      usage: { input_tokens: 44, output_tokens: 0, total_tokens: 44 },
+    });
+  });
+
+  test('refuses an image and a repeated choice value', () => {
+    expect(() => openaiToSystemOne({
+      input: [{ role: 'user', content: [{ type: 'input_image', image_url: 'data:image/png;base64,aa' }] }],
+      questions: [{ type: 'predicate', name: 'seen', instructions: 'Is it visible?' }],
+    })).toThrow(/images/);
+    expect(() => openaiToSystemOne({
+      input: 'hi',
+      questions: [{
+        type: 'choice',
+        name: 'ok',
+        instructions: 'Pick',
+        choices: [{ value: true }, { value: 'true' }],
+      }],
+    })).toThrow(/repeats choice/);
+    expect(() => openaiToSystemOne({
+      input: 'hi',
+      questions: [
+        { type: 'predicate', name: 'same', instructions: 'A' },
+        { type: 'predicate', name: 'same', instructions: 'B' },
+      ],
+    })).toThrow(/duplicate question name/);
+  });
+});
+
 describe('decision route', () => {
   test('a missing download is not ready', async () => {
     const root = tempRoot();
@@ -171,6 +271,67 @@ describe('decision route', () => {
     const list = await app.request('/api/v1/setup.json');
     const body = await list.json() as { features: { id: string }[] };
     expect(body.features.map((item) => item.id)).toEqual(['decision']);
+  });
+
+  test('the OpenAI route is not ready until the model is downloaded', async () => {
+    const root = tempRoot();
+    const { app } = appWith(root, idleEngine());
+    const res = await app.request('/api/v1/decisions.json', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'gpt-6-luna',
+        input: 'hi',
+        questions: [{ type: 'predicate', name: 'ok', instructions: 'Is it ok?' }],
+      }),
+    });
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({ error: 'DECISION_NOT_READY' });
+  });
+
+  test('the OpenAI route returns answers in question order', async () => {
+    const root = tempRoot();
+    installFakeModel(root);
+    const { app } = appWith(root, idleEngine(), true, async () => ({
+      model: 'laya-multilingual',
+      answers: {
+        damaged: { type: 'noul', noul: 0.95 },
+        queue: {
+          type: 'choice',
+          choice: 'shipping',
+          confidence: 0.81,
+          probabilities: { billing: 0.19, shipping: 0.81 },
+        },
+      },
+      usage: { input_tokens: 10, output_tokens: 0 },
+    }));
+    writeFileSync(join(root, 'config.json'), JSON.stringify({ token: TOKEN, port: 38888, decisionEnabled: true }));
+    const res = await app.request('/api/v1/decisions.json', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'gpt-6-luna',
+        input: 'The screen is broken.',
+        questions: [
+          { type: 'predicate', name: 'damaged', instructions: 'Is it damaged?' },
+          {
+            type: 'choice',
+            name: 'queue',
+            instructions: 'Which team?',
+            choices: [
+              { value: 'billing', description: 'Payments' },
+              { value: 'shipping', description: 'Delivery' },
+            ],
+          },
+        ],
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as { model: string; answers: { type: string; name: string }[]; usage: { total_tokens: number } };
+    expect(body.model).toBe('laya-multilingual');
+    expect(body.answers.map((item) => item.type)).toEqual(['predicate', 'choice']);
+    expect(body.answers[1]).toMatchObject({ name: 'queue', choice: 'shipping' });
+    expect(body.usage.total_tokens).toBe(10);
   });
 
   test('a machine without Metal has no model and refuses download', async () => {

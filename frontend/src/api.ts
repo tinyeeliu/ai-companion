@@ -124,6 +124,7 @@ export function setDecisionEnabled(enabled: boolean): Promise<DecisionSetupFeatu
 }
 
 const TEST_DECISION = {
+  model: 'laya-multilingual',
   state: 'The customer wrote: 我的订单到了但是盒子是破的。',
   questions: {
     team: {

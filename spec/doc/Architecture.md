@@ -272,6 +272,8 @@ result: `model`, `answers`, `usage`. Errors stay `{ error, message }`.
 | `questions` | Required, non-empty map of `choice`, `noul`, and `score` questions |
 | `model` | `laya-multilingual`, or omitted. Any other name is `400` |
 
+`POST /api/v1/decisions.json` accepts an OpenAI Decisions body (`input`, a `questions` array of `predicate`, `choice`, and `score`) and returns that shape: `answers` in question order, plus `usage.total_tokens`. `model` on that route is accepted and ignored. The response `model` is the one that answered. An image in `input` is `400`. Both routes share the queue and the gates below.
+
 Nothing is fetched at boot. On Apple Silicon the Setup page downloads `uv`,
 creates a Python 3.12 environment under `data/decision/python/` with pinned
 `mlx-decision` 0.8.1, and downloads the weights into `data/decision/hub`. That
@@ -317,6 +319,7 @@ Auth column: `loopback` means a caller on this machine needs no token; every oth
 | POST | `/api/v1/setup/tts/download.json` | loopback |
 | PUT | `/api/v1/setup/tts.json` | loopback |
 | POST | `/api/v1/systemone.json` | loopback |
+| POST | `/api/v1/decisions.json` | loopback |
 | POST | `/api/v1/setup/decision/download.json` | loopback |
 | PUT | `/api/v1/setup/decision.json` | loopback |
 

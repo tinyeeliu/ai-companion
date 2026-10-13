@@ -41,6 +41,7 @@ curl -sS -X PUT http://127.0.0.1:38000/api/v1/setup/decision.json \
 curl -sS -X POST http://127.0.0.1:38000/api/v1/systemone.json \
   -H 'content-type: application/json' \
   -d '{
+    "model": "laya-multilingual",
     "state": "The customer wrote: 我的订单到了但是盒子是破的。",
     "questions": {
       "team": {
@@ -76,6 +77,51 @@ A success body looks like this. The numbers come from the model.
 ```
 
 The connection is held until the answer is ready. The first call after Enable loads the weights, so it is the slow one. Later calls are short. One decision runs at a time, on its own queue, so a speech request does not wait for it and a decision does not wait for speech.
+
+## OpenAI Decisions
+
+`POST /api/v1/decisions.json` accepts the OpenAI Decisions body and returns that shape. It is the same model and the same queue. The path is not `/v1/decisions`, so an OpenAI SDK needs its request path changed the same way speech does.
+
+`input` is a string, or user messages made of `input_text`. An image is `400`. Send `model` as `laya-multilingual`. `gpt-6-luna` is accepted too, and so is leaving `model` out. The response `model` is the one that answered.
+
+| OpenAI question | What the model is asked |
+| --- | --- |
+| `predicate` | A yes/no question. The answer is `probability` |
+| `choice` with `choices` (`value`, optional `description`) | A choice. `value` may be a string or a boolean, and it is returned in that same type |
+| `score` with `levels` (`label`, optional `description`) | A score. `score` is the weighted level index starting at 0 |
+
+```bash
+curl -sS -X POST http://127.0.0.1:38000/api/v1/decisions.json \
+  -H 'content-type: application/json' \
+  -d '{
+    "model": "laya-multilingual",
+    "input": "The package arrived with a broken screen. I want my money back.",
+    "questions": [
+      {
+        "type": "predicate",
+        "name": "damaged",
+        "instructions": "Does the customer report a damaged item?"
+      },
+      {
+        "type": "choice",
+        "name": "queue",
+        "instructions": "Which team should handle this ticket?",
+        "choices": [
+          { "value": "billing", "description": "Refunds and payments" },
+          { "value": "shipping", "description": "Delivery and damaged items" }
+        ]
+      },
+      {
+        "type": "score",
+        "name": "urgency",
+        "instructions": "How urgent is this ticket?",
+        "levels": [{ "label": "low" }, { "label": "medium" }, { "label": "high" }]
+      }
+    ]
+  }'
+```
+
+Answers come back as an array in question order. `usage` adds `total_tokens`. A question the model cannot answer fails the whole request. There is no per-question refusal.
 
 ## Errors
 
