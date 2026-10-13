@@ -217,7 +217,8 @@ the routes answer `503 CLI_UNAVAILABLE` and the rest of Companion is unaffected.
 `POST /api/v1/audio/speech` speaks the **OpenAI Create speech** body, and only
 that: `model`, `input`, `voice`, `response_format`, `speed`, `instructions`,
 `stream_format`. Unknown fields are a `400`. The success body is audio bytes,
-so the path has no `.json` suffix. Errors still use `{ error, message }`. An
+except `stream_format` `speaker`, which plays on this machine and returns an
+empty `204`. The path has no `.json` suffix. Errors still use `{ error, message }`. An
 OpenAI SDK cannot be pointed here unchanged, because the path is not
 `/v1/audio/speech`.
 
@@ -229,7 +230,7 @@ OpenAI SDK cannot be pointed here unchanged, because the path is not
 | `response_format` | `wav` (default) or `pcm` (signed 16-bit little-endian, 24 kHz, mono). `mp3`, `opus`, `aac`, `flac` are `400` |
 | `speed` | `0.25`–`4.0`, default `1`. On Apple Silicon this number is passed to mlx-audio. On Windows, sherpa's Kokoro length scale is `1/speed` (a larger OpenAI speed is faster) |
 | `instructions` | Accepted and ignored. Kokoro has no style prompt |
-| `stream_format` | `audio` only. `sse` is `400` |
+| `stream_format` | `audio` (default) returns the bytes. `speaker` plays the wav on this machine and answers `204` with an empty body; `response_format` is ignored because nothing is returned. Playback waits until the speaker finishes, and two speaker requests do not overlap. `sse` is `400` |
 
 Nothing is fetched at boot. On Apple Silicon the Setup page downloads `uv`,
 creates a Python 3.12 environment under `data/tts/python/` with pinned

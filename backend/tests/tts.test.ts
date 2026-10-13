@@ -92,7 +92,7 @@ function installFakeKokoro(root: string): void {
   writeFileSync(join(binDir, 'sherpa-onnx-offline-tts'), '');
 }
 
-function appWith(root: string, runner: SpeechRunner) {
+function appWith(root: string, runner: SpeechRunner, play?: (wav: Uint8Array) => Promise<void>) {
   const manager = new ConnectionManager(new ConnectionStore(root), fakeFactory(new Map()), fetch);
   writeFileSync(join(root, 'config.json'), JSON.stringify({ token: TOKEN, port: 38888, ttsEnabled: false }));
   const setup = new TtsSetup({ root, fetchImpl: fetch });
@@ -101,7 +101,7 @@ function appWith(root: string, runner: SpeechRunner) {
     token: TOKEN,
     port: 38888,
     configRoot: root,
-    tts: { queue: new TtsQueue(runner), setup },
+    tts: { queue: new TtsQueue(runner), setup, play },
   });
   return { app, setup };
 }
@@ -154,8 +154,17 @@ describe('parseSpeechRequest', () => {
       /wav or pcm/,
     );
     expect(() => parseSpeechRequest({ model: 'kokoro-82m', input: 'Hi', voice: 'default', stream_format: 'sse' })).toThrow(
-      /audio/,
+      /audio or speaker/,
     );
+    const speaker = parseSpeechRequest({
+      model: 'kokoro-82m',
+      input: 'Hi',
+      voice: 'default',
+      response_format: 'pcm',
+      stream_format: 'speaker',
+    });
+    expect(speaker.speaker).toBe(true);
+    expect(speaker.format).toBe('wav');
     expect(() => parseSpeechRequest({ model: 'kokoro-82m', input: 'Hi', voice: 'shimmer' })).toThrow(/voice/);
   });
 });
@@ -299,6 +308,25 @@ describe('speech routes', () => {
     expect(res.headers.get('content-type')).toBe('audio/wav');
     expect(Buffer.from(await res.arrayBuffer())).toEqual(Buffer.from(WAV));
     expect(jobs[0]?.voice.sid).toBe(3);
+  });
+
+  test('speaker plays the wav and returns an empty body', async () => {
+    const root = tempDir();
+    installFakeKokoro(root);
+    const played: Uint8Array[] = [];
+    const { app } = appWith(root, okRunner(), async (wav) => {
+      played.push(wav);
+    });
+    setConfigTtsEnabled(root, true);
+    const res = await app.request('/api/v1/audio/speech', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ model: 'kokoro-82m', input: 'Hello', voice: 'default', stream_format: 'speaker' }),
+    });
+    expect(res.status).toBe(204);
+    expect(res.headers.get('content-type')).toBeNull();
+    expect(Buffer.from(await res.arrayBuffer())).toHaveLength(0);
+    expect(Buffer.from(played[0] ?? new Uint8Array())).toEqual(Buffer.from(WAV));
   });
 
   test('a token change keeps the speech switch and the selected model', () => {

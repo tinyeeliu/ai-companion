@@ -28,6 +28,8 @@ export interface SpeechJob {
   voice: ResolvedVoice;
   speed: number;
   format: 'wav' | 'pcm';
+  /** Play on this machine and return no audio bytes. */
+  speaker: boolean;
 }
 
 export function parseSpeechRequest(body: Record<string, unknown>, loaded: TtsModelId | null = null): SpeechJob {
@@ -83,11 +85,12 @@ export function parseSpeechRequest(body: Record<string, unknown>, loaded: TtsMod
     throw new HttpError(400, 'INVALID_PARAM', 'instructions must be a string');
   }
 
-  if (body.stream_format != null && body.stream_format !== 'audio') {
-    throw new HttpError(400, 'INVALID_PARAM', 'stream_format must be audio');
+  if (body.stream_format != null && body.stream_format !== 'audio' && body.stream_format !== 'speaker') {
+    throw new HttpError(400, 'INVALID_PARAM', 'stream_format must be audio or speaker');
   }
+  const speaker = body.stream_format === 'speaker';
 
-  return { input, voice, speed, format };
+  return { input, voice, speed, format: speaker ? 'wav' : format, speaker };
 }
 
 function resolveLoadedVoice(name: string, loaded: TtsModelId | null): ResolvedVoice | null {

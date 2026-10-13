@@ -10,6 +10,7 @@ import { TtsFailedError, TtsTimeoutError } from './engine';
 import { listVoices } from './catalog';
 import { speakOs } from './os';
 import { parseSpeechRequest } from './parse';
+import { playOnSpeaker } from './speaker';
 import { usesMlxEngine } from './layout';
 import { TtsQueueFullError, type SpeechResult, type TtsQueue } from './queue';
 import type { TtsSetup } from './setup';
@@ -17,10 +18,13 @@ import type { TtsSetup } from './setup';
 export interface TtsRoutesOptions {
   queue: TtsQueue;
   setup: TtsSetup;
+  /** Test double. The default plays the wav on this machine. */
+  play?: (wav: Uint8Array) => Promise<void>;
 }
 
 export function registerTtsRoutes(app: Hono, options: TtsRoutesOptions): void {
   const { queue, setup } = options;
+  const play = options.play ?? playOnSpeaker;
 
   app.get('/api/v1/voices.json', async (c) => {
     return c.json({ voices: await listVoices(setup.dataRoot()) });
@@ -30,8 +34,7 @@ export function registerTtsRoutes(app: Hono, options: TtsRoutesOptions): void {
     const body = await readJson(c);
     const job = parseSpeechRequest(body, usesMlxEngine() ? setup.model() : null);
     if (job.voice.osName != null) {
-      const result = await speakMapped(job);
-      return c.body(new Uint8Array(result.audio), 200, { 'content-type': result.contentType });
+      return respond(c, job, await speakMapped(job), play);
     }
     if (!(await setup.downloaded())) {
       throw new HttpError(503, 'TTS_NOT_READY', 'Speech model is not downloaded');
@@ -39,8 +42,7 @@ export function registerTtsRoutes(app: Hono, options: TtsRoutesOptions): void {
     if (!setup.enabled()) {
       throw new HttpError(503, 'TTS_DISABLED', 'Speech is turned off');
     }
-    const result = await submit(queue, job);
-    return c.body(new Uint8Array(result.audio), 200, { 'content-type': result.contentType });
+    return respond(c, job, await submit(queue, job), play);
   });
 
   app.get('/api/v1/setup.json', async (c) => {
@@ -65,6 +67,23 @@ export function registerTtsRoutes(app: Hono, options: TtsRoutesOptions): void {
     }
     return c.json(await setup.setEnabled(body.enabled));
   });
+}
+
+async function respond(
+  c: { body: (data: Uint8Array | null, status?: number, headers?: Record<string, string>) => Response },
+  job: ReturnType<typeof parseSpeechRequest>,
+  result: SpeechResult,
+  play: (wav: Uint8Array) => Promise<void>,
+): Promise<Response> {
+  if (!job.speaker) {
+    return c.body(new Uint8Array(result.audio), 200, { 'content-type': result.contentType });
+  }
+  try {
+    await play(result.audio);
+  } catch (error) {
+    throw mapSpeechError(error);
+  }
+  return c.body(null, 204);
 }
 
 async function speakMapped(job: ReturnType<typeof parseSpeechRequest>): Promise<SpeechResult> {
