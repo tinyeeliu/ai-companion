@@ -109,6 +109,30 @@ def install_mlx_checkpoint_loader():
     Model.sanitize = sanitize
 
 
+def install_zh_g2p():
+    """v1.1-zh was trained on misaki's 1.1 frontend. The default frontend writes
+    IPA the checkpoint cannot read, so the voice comes out wrong.
+    """
+    from mlx_audio.tts.models.kokoro.kokoro import Model
+
+    if getattr(Model._get_pipeline, "_companion", False):
+        return
+    original = Model._get_pipeline
+
+    def _get_pipeline(self, lang_code):
+        pipeline = original(self, lang_code)
+        if lang_code == "z" and not getattr(pipeline, "_companion_zh", False):
+            from misaki import en, zh
+
+            english = en.G2P(trf=False, british=False, unk="")
+            pipeline.g2p = zh.ZHG2P(version="1.1", en_callable=lambda text: english(text)[0])
+            pipeline._companion_zh = True
+        return pipeline
+
+    _get_pipeline._companion = True
+    Model._get_pipeline = _get_pipeline
+
+
 def load(model_id):
     global model
     repo = MODELS[model_id]
@@ -118,6 +142,7 @@ def load(model_id):
 
         install_npy_voices()
         install_mlx_checkpoint_loader()
+        install_zh_g2p()
         if model is not None:
             model = None
             mx.clear_cache()

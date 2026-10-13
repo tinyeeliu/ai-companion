@@ -237,7 +237,7 @@ creates a Python 3.12 environment under `data/tts/python/` with pinned
 `data/tts/mlx/hub`. The selector in `config.json` (`ttsModel`, `en` or `zh`)
 chooses which checkpoint is loaded. English is `mlx-community/Kokoro-82M-bf16`
 (language `a`; British voices `bf_` / `bm_` use `b`). Chinese is
-`FluidInference/kokoro-82m-v1.1-zh-mlx` (language `z`). A single Python process
+`FluidInference/kokoro-82m-v1.1-zh-mlx` (language `z`, misaki's 1.1 Chinese frontend). A single Python process
 stays up, holds that checkpoint, and speaks each request. It uses the Metal
 GPU. The request field `model` stays `kokoro-82m`. On Windows the Setup page
 downloads the Kokoro archive and `sherpa-onnx-offline-tts.exe` instead, shows
