@@ -13,7 +13,8 @@ import { ConnectionStore } from '../src/store';
 import { setConfigTtsEnabled, setConfigToken } from '../src/token';
 import { downloadVerified } from '../src/tts/download';
 import { buildTtsArgs } from '../src/tts/engine';
-import { engineDir, modelDir } from '../src/tts/layout';
+import { engineDir, mlxDir, modelDir, usesMlxEngine } from '../src/tts/layout';
+import { buildMlxArgs, mlxRunner } from '../src/tts/mlx';
 import { parseSpeechRequest } from '../src/tts/parse';
 import { TtsQueue, type SpeechResult, type SpeechRunner } from '../src/tts/queue';
 import { TtsSetup } from '../src/tts/setup';
@@ -70,6 +71,15 @@ function writeText(bytes: Uint8Array, offset: number, text: string): void {
 
 /** Empty stand-ins for the files the readiness check looks for. */
 function installFakeKokoro(root: string): void {
+  if (usesMlxEngine()) {
+    const dir = mlxDir(root);
+    mkdirSync(join(dir, 'voices'), { recursive: true });
+    writeFileSync(join(dir, 'config.json'), '{}');
+    writeFileSync(join(dir, 'kokoro-v1_0.safetensors'), '');
+    writeFileSync(join(dir, 'voices', 'af_heart.npy'), '');
+    writeFileSync(join(dir, 'KokoroCLI'), '');
+    return;
+  }
   const model = modelDir(root);
   mkdirSync(join(model, 'espeak-ng-data'), { recursive: true });
   mkdirSync(join(model, 'dict'), { recursive: true });
@@ -168,6 +178,39 @@ describe('buildTtsArgs', () => {
     expect(args).toContain('--output-filename=/tmp/speech.wav');
     expect(args.at(-1)).toBe('Hello');
     expect(args.some((arg) => arg.includes('lexicon-us-en.txt'))).toBe(true);
+  });
+});
+
+describe('buildMlxArgs', () => {
+  test('passes OpenAI speed through and uses British English for bm_', () => {
+    const job = parseSpeechRequest({ model: 'kokoro-82m', input: 'Hello', voice: 'fable', speed: 1.1 });
+    expect(buildMlxArgs('/weights', job, '/tmp/speech.wav')).toEqual([
+      '--text', 'Hello',
+      '--voice', 'bm_fable',
+      '--output', '/tmp/speech.wav',
+      '--weights-dir', '/weights',
+      '--backend', 'mlx',
+      '--speed', '1.1',
+      '--lang-code', 'en-gb',
+    ]);
+  });
+
+  test('default voice stays American English', () => {
+    const job = parseSpeechRequest({ model: 'kokoro-82m', input: 'Hello', voice: 'default', speed: 1.5 });
+    const args = buildMlxArgs('/weights', job, '/tmp/speech.wav');
+    expect(args[args.indexOf('--voice') + 1]).toBe('af_heart');
+    expect(args[args.indexOf('--speed') + 1]).toBe('1.5');
+    expect(args[args.indexOf('--lang-code') + 1]).toBe('en-us');
+  });
+
+  test('a voice with no npy file is a 400 before the process starts', async () => {
+    const root = tempDir();
+    const dir = mlxDir(root);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'KokoroCLI'), '');
+    const runner = mlxRunner(async () => ({ bin: join(dir, 'KokoroCLI'), libDirs: [] }), () => dir);
+    const job = parseSpeechRequest({ model: 'kokoro-82m', input: 'Hi', voice: 'default' });
+    await expect(runner.run(job)).rejects.toMatchObject({ status: 400, code: 'INVALID_PARAM' });
   });
 });
 

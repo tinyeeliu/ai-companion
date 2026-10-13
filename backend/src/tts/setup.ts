@@ -1,26 +1,32 @@
 /**
  * @fileoverview Setup state for local speech.
  *
- * Nothing is fetched at boot. Download runs only when the Setup page asks, one
- * archive at a time, and Enable is refused until both the model and the engine
- * are on disk. Disable keeps the files and only clears the switch in config.json.
+ * Nothing is fetched at boot. Download runs only when the Setup page asks.
+ * Apple Silicon fetches the MLX weights; the KokoroCLI binary is built separately.
+ * Windows fetches the sherpa archive and the Kokoro onnx model. Enable is refused
+ * until that machine's files are on disk. Disable keeps the files and only clears
+ * the switch in config.json.
  */
 import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { chmod, rm } from 'node:fs/promises';
 import { join } from 'node:path';
-import { ensureDir } from '../paths';
+import { ensureDir, ttsDir } from '../paths';
 import { configTtsEnabled, setConfigTtsEnabled } from '../token';
 import { HttpError } from '../types';
-import { MODEL_ASSET, engineAsset, type ArchiveAsset } from './assets';
+import { MLX_FILES, MODEL_ASSET, engineAsset, type ArchiveAsset, type MlxFile } from './assets';
 import { downloadVerified } from './download';
 import {
   engineDir,
   findEngineBinary,
+  findMlxBinary,
   incomingDir,
+  mlxDir,
+  mlxReady,
   modelDir,
   modelReady,
+  usesMlxEngine,
 } from './layout';
-import { ttsDir } from '../paths';
 
 export interface SetupFeature {
   id: 'tts';
@@ -56,6 +62,7 @@ export class TtsSetup {
   }
 
   async downloaded(): Promise<boolean> {
+    if (usesMlxEngine()) return mlxReady(this.root);
     return modelReady(this.root) && (await findEngineBinary(this.root)) != null;
   }
 
@@ -81,6 +88,15 @@ export class TtsSetup {
    * is left alone: calling this again does not re-fetch hundreds of megabytes.
    */
   startDownload(): Promise<SetupFeature> {
+    if (usesMlxEngine()) {
+      if (this.job == null) {
+        this.error = null;
+        this.job = this.runMlx().finally(() => {
+          this.job = null;
+        });
+      }
+      return this.view();
+    }
     const asset = engineAsset();
     if (asset == null) {
       throw new HttpError(400, 'INVALID_PARAM', `No speech engine build for ${process.platform}-${process.arch}`);
@@ -100,6 +116,45 @@ export class TtsSetup {
     }
     setConfigTtsEnabled(this.root, enabled);
     return this.view();
+  }
+
+  private async runMlx(): Promise<void> {
+    const dir = mlxDir(this.root);
+    const present = (file: MlxFile) => existsSync(join(dir, file.relativePath));
+    this.total = MLX_FILES.reduce((sum, file) => sum + file.bytes, 0);
+    this.received = MLX_FILES.reduce((sum, file) => sum + (present(file) ? file.bytes : 0), 0);
+    try {
+      ensureDir(dir);
+      ensureDir(join(dir, 'voices'));
+      ensureDir(incomingDir(this.root));
+      let received = this.received;
+      for (const file of MLX_FILES) {
+        if (present(file)) continue;
+        const base = received;
+        const name = file.relativePath.replaceAll('/', '_');
+        await downloadVerified(
+          file.url,
+          join(incomingDir(this.root), `${name}.partial`),
+          join(dir, file.relativePath),
+          file.sha256,
+          (got) => {
+            this.received = base + got;
+          },
+          this.fetchImpl,
+        );
+        received += file.bytes;
+        this.received = received;
+      }
+      const bin = await findMlxBinary(this.root);
+      if (bin == null) {
+        this.error = 'KokoroCLI is not built. Run companion/scripts/build-kokoro-mlx.sh';
+        return;
+      }
+      await chmod(bin, 0o755);
+      this.received = this.total;
+    } catch (error) {
+      this.error = error instanceof Error ? error.message : String(error);
+    }
   }
 
   private async run(engine: ArchiveAsset): Promise<void> {

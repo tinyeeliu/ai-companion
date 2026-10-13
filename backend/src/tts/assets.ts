@@ -35,3 +35,33 @@ const ENGINES: Record<string, ArchiveAsset> = {
 export function engineAsset(platform = process.platform, arch = process.arch): ArchiveAsset | null {
   return ENGINES[`${platform}-${arch}`] ?? null;
 }
+
+/** MLX weights for KokoroCLI. The binary itself is built, not downloaded. */
+export interface MlxFile {
+  url: string;
+  sha256: string;
+  bytes: number;
+  /** Path under `data/tts/mlx`. */
+  relativePath: string;
+}
+
+export const MLX_FILES: MlxFile[] = [
+  {
+    url: 'https://huggingface.co/mweinbach/Kokoro-82M-Swift/resolve/main/config.json',
+    sha256: '5abb01e2403b072bf03d04fde160443e209d7a0dad49a423be15196b9b43c17f',
+    bytes: 2351,
+    relativePath: 'config.json',
+  },
+  {
+    url: 'https://huggingface.co/mweinbach/Kokoro-82M-Swift/resolve/main/MLX_GPU/kokoro-v1_0.safetensors',
+    sha256: 'e910a0d08651e767910c0ba46cee19f40fc28ce1a774c6f2c4c626fe156c87a6',
+    bytes: 324_752_712,
+    relativePath: 'kokoro-v1_0.safetensors',
+  },
+  {
+    url: 'https://huggingface.co/mweinbach/Kokoro-82M-Swift/resolve/main/MLX_GPU/voices/af_heart.npy',
+    sha256: '0212418aafafb1e9878f3300787937aa401ac937cff8c0310ffa32963d96c77b',
+    bytes: 522_368,
+    relativePath: 'voices/af_heart.npy',
+  },
+];

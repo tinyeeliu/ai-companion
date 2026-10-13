@@ -112,14 +112,14 @@ export function sherpaRunner(
   };
 }
 
-interface DeadlineOutcome {
+export interface DeadlineOutcome {
   code: number | null;
   stdout: string;
   stderr: string;
   timedOut: boolean;
 }
 
-function runWithDeadline(
+export function runWithDeadline(
   bin: string,
   args: string[],
   env: NodeJS.ProcessEnv,

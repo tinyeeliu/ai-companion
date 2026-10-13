@@ -4,7 +4,8 @@
  * process is up is picked up by the next request without a restart.
  */
 import { sherpaRunner } from './engine';
-import { findEngineBinary, kokoroPaths, libraryDirs } from './layout';
+import { findEngineBinary, findMlxBinary, kokoroPaths, libraryDirs, mlxDir, mlxLibraryDirs, usesMlxEngine } from './layout';
+import { mlxRunner } from './mlx';
 import { TtsQueue } from './queue';
 import { TtsSetup } from './setup';
 import type { TtsRoutesOptions } from './index';
@@ -12,11 +13,17 @@ import type { TtsRoutesOptions } from './index';
 export function createSpeech(root: string): TtsRoutesOptions {
   const setup = new TtsSetup({ root });
   const queue = new TtsQueue(
-    sherpaRunner(async () => {
-      const bin = await findEngineBinary(root);
-      if (bin == null) return null;
-      return { bin, libDirs: await libraryDirs(root) };
-    }, () => kokoroPaths(root)),
+    usesMlxEngine()
+      ? mlxRunner(async () => {
+        const bin = await findMlxBinary(root);
+        if (bin == null) return null;
+        return { bin, libDirs: await mlxLibraryDirs(root) };
+      }, () => mlxDir(root))
+      : sherpaRunner(async () => {
+        const bin = await findEngineBinary(root);
+        if (bin == null) return null;
+        return { bin, libDirs: await libraryDirs(root) };
+      }, () => kokoroPaths(root)),
   );
   return { queue, setup };
 }

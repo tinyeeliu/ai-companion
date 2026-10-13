@@ -7,6 +7,7 @@ import { GEN_PRUNE_INTERVAL_MS, genStore } from './gen/store';
 import { drawThingsRunner } from './gen/drawthings';
 import { GenQueue } from './gen/queue';
 import { DEFAULT_MODEL } from './gen';
+import { usesMlxEngine } from './tts/layout';
 import { createSpeech } from './tts/runtime';
 import { linejsFactory } from './line';
 import { dataDir, ensureDir, genDir, listenHost, listenPort } from './paths';
@@ -104,7 +105,7 @@ setInterval(() => {
 
 const speech = createSpeech(root);
 console.log(
-  `[companion] speech ${config.ttsEnabled ? 'enabled' : 'off'} (model downloads from the Setup page)`,
+  `[companion] speech ${config.ttsEnabled ? 'enabled' : 'off'} (${usesMlxEngine() ? 'mlx' : 'sherpa'}; model downloads from the Setup page)`,
 );
 
 const app = createApp({

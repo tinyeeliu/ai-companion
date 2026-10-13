@@ -52,7 +52,8 @@ Tauri (package/)  →  bun sidecar (backend/)  →  Baileys WhatsApp socket
 | `backend/src/gen/store.ts` | `data/gen/{id}.png` cache for `response_format: "url"` |
 | `backend/src/gen/index.ts` | OpenAI-shaped routes, validation, `response_format` disposition |
 | `backend/src/tts/index.ts` | OpenAI-shaped speech route and the Setup JSON |
-| `backend/src/tts/engine.ts` | The only place that spawns `sherpa-onnx-offline-tts` |
+| `backend/src/tts/engine.ts` | The only place that spawns `sherpa-onnx-offline-tts` (Windows) |
+| `backend/src/tts/mlx.ts` | The only place that spawns `KokoroCLI` (Apple Silicon, MLX) |
 | `backend/src/tts/setup.ts` | Download and the enable switch for local speech |
 
 | `backend/src/disconnect.ts` | Close-code map (401/440/405/515/500) |
@@ -72,8 +73,9 @@ data/messages.sqlite              # ChatMessage: history log + durable delivery 
 data/media.sqlite                 # MediaObject / MediaUrl: the media cache meta
 data/media/{sha256}.{ext}         # cached plaintext, content-addressed
 data/gen/{id}.png                 # generated image kept for response_format:"url"; a cache, not storage
-data/tts/kokoro-multi-lang-v1_0/  # Kokoro weights, voices, espeak-ng-data; filled by Setup
-data/tts/engine/                  # sherpa-onnx-offline-tts for this OS; filled by Setup
+data/tts/mlx/                     # Apple Silicon: KokoroCLI, config.json, kokoro-v1_0.safetensors, voices/
+data/tts/kokoro-multi-lang-v1_0/  # Windows: Kokoro weights, voices, espeak-ng-data; filled by Setup
+data/tts/engine/                  # Windows: sherpa-onnx-offline-tts; filled by Setup
 ```
 
 Inbound and outbound chat is stored in SQLite table `"ChatMessage"` for 7 days. Prune runs at boot and every 24 hours. Dashboard Received/Sent counters stay as lifetime totals in `meta.json`: Received increments on every vendor inbound message, Sent increments on every outbound queue write — a dashboard `POST /connection/:id/message` and a cloud `sendMessage`/`sendCompactMessage` invoke alike.
@@ -222,18 +224,24 @@ OpenAI SDK cannot be pointed here unchanged, because the path is not
 | `input` | Required, 1–4096 characters |
 | `voice` | `"default"` or `{ "id": "default" }` is `af_heart` (speaker 3). A Kokoro id, or `alloy`, `echo`, `fable`, `onyx`, `nova`. Anything else, including the other OpenAI names, is `400` |
 | `response_format` | `wav` (default) or `pcm` (signed 16-bit little-endian, 24 kHz, mono). `mp3`, `opus`, `aac`, `flac` are `400` |
-| `speed` | `0.25`–`4.0`, default `1`. Kokoro's length scale is `1/speed` (a larger OpenAI speed is faster) |
+| `speed` | `0.25`–`4.0`, default `1`. On Apple Silicon this number is passed to KokoroCLI. On Windows, sherpa's Kokoro length scale is `1/speed` (a larger OpenAI speed is faster) |
 | `instructions` | Accepted and ignored. Kokoro has no style prompt |
 | `stream_format` | `audio` only. `sse` is `400` |
 
-Nothing is fetched at boot. The Setup page downloads the Kokoro archive and the
-sherpa-onnx binary for this machine into `data/tts/`, then the enable switch in
-`config.json` (`ttsEnabled`) turns the route on. Until then the route answers
-`503 TTS_NOT_READY` or `503 TTS_DISABLED`. Each request runs
-`sherpa-onnx-offline-tts` once, one at a time, on its own queue so a FLUX job
-does not hold up a sentence. A full queue is `503 QUEUE_FULL`. A wedged child
-is killed and the caller gets `504 TTS_TIMEOUT`. A non-zero exit is
-`500 TTS_FAILED`.
+Nothing is fetched at boot. On Apple Silicon the Setup page downloads the MLX
+weights (`config.json`, `kokoro-v1_0.safetensors`, `voices/af_heart.npy`) into
+`data/tts/mlx/`. The `KokoroCLI` binary is built by
+`scripts/build-kokoro-mlx.sh` and copied there; it is not part of the download.
+Each request runs `KokoroCLI --backend mlx` once. That process uses the Metal
+GPU. Its text-to-phoneme step is English (`en-us`, or `en-gb` for `bf_` / `bm_`
+voices). On Windows the Setup page downloads the Kokoro archive and
+`sherpa-onnx-offline-tts.exe` instead, and each request runs that CPU binary.
+The enable switch in `config.json` (`ttsEnabled`) turns the route on. Until the
+files for this machine are present the route answers `503 TTS_NOT_READY` or
+`503 TTS_DISABLED`. Speech runs one at a time, on its own queue, so a FLUX job
+does not hold up a sentence. A voice with no `.npy` on Apple Silicon is `400`.
+A full queue is `503 QUEUE_FULL`. A wedged child is killed and the caller gets
+`504 TTS_TIMEOUT`. A non-zero exit is `500 TTS_FAILED`.
 
 ## REST
 
