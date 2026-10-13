@@ -186,7 +186,11 @@ export interface AppConfig {
    * Local speech is served only when this is true AND the Kokoro files are on
    * disk. Absent means off, so an old config.json does not start speaking.
    */
-  ttsEnabled?: boolean;
+  /**
+   * Which Kokoro checkpoint Apple Silicon has selected. Absent means English,
+   * so an old config.json keeps the voice it already had.
+   */
+  ttsModel?: 'en' | 'zh';
 }
 
 export interface InboundText {

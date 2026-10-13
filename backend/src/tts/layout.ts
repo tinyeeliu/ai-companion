@@ -43,6 +43,47 @@ export function mlxDir(root: string): string {
   return join(ttsDir(root), MLX_DIR_NAME);
 }
 
+export function pythonDir(root: string): string {
+  return join(ttsDir(root), 'python');
+}
+
+export function pythonBin(root: string): string {
+  return join(pythonDir(root), 'venv', 'bin', 'python');
+}
+
+export function uvBin(root: string): string {
+  return join(pythonDir(root), 'uv');
+}
+
+export function pythonReady(root: string): boolean {
+  return existsSync(join(pythonDir(root), 'python.ready')) && existsSync(pythonBin(root));
+}
+
+export function mlxHubDir(root: string): string {
+  return join(mlxDir(root), 'hub');
+}
+
+export function modelMarker(root: string, model: string): string {
+  return join(mlxDir(root), 'ready', model);
+}
+
+export function mlxModelReady(root: string, model: string): boolean {
+  return existsSync(modelMarker(root, model));
+}
+
+/** Env for uv and the speech worker. Caches stay under data/tts. */
+export function workerEnv(root: string): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    PYTHONUNBUFFERED: '1',
+    HF_HOME: join(mlxDir(root), 'hf'),
+    HF_HUB_CACHE: mlxHubDir(root),
+    COMPANION_TTS_ROOT: ttsDir(root),
+    UV_PYTHON_INSTALL_DIR: join(pythonDir(root), 'pythons'),
+    UV_CACHE_DIR: join(pythonDir(root), 'cache'),
+  };
+}
+
 export function mlxVoicePath(root: string, voiceId: string): string {
   return join(mlxDir(root), 'voices', `${voiceId}.npy`);
 }

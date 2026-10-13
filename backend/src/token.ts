@@ -47,6 +47,11 @@ export function configTtsEnabled(root: string): boolean {
   return readConfig(root)?.ttsEnabled === true;
 }
 
+/** Apple Silicon speech checkpoint. A missing field is the English model. */
+export function configTtsModel(root: string): 'en' | 'zh' {
+  return readConfig(root)?.ttsModel === 'zh' ? 'zh' : 'en';
+}
+
 export function loadOrCreateConfig(root: string, port: number = DEFAULT_PORT): AppConfig {
   ensureDir(root);
   const file = configPath(root);
@@ -58,6 +63,7 @@ export function loadOrCreateConfig(root: string, port: number = DEFAULT_PORT): A
         port: typeof parsed.port === 'number' ? parsed.port : port,
         modelsDir: configModelsDir(root),
         ttsEnabled: parsed.ttsEnabled === true,
+        ttsModel: parsed.ttsModel === 'zh' ? 'zh' : 'en',
       };
       if (cfg.port !== port) {
         cfg.port = port;
@@ -66,7 +72,7 @@ export function loadOrCreateConfig(root: string, port: number = DEFAULT_PORT): A
       return cfg;
     }
   }
-  const cfg: AppConfig = { token: newToken(), port, modelsDir: null, ttsEnabled: false };
+  const cfg: AppConfig = { token: newToken(), port, modelsDir: null, ttsEnabled: false, ttsModel: 'en' };
   writeConfig(root, cfg);
   return cfg;
 }
@@ -89,7 +95,13 @@ export function setConfigToken(root: string, token: string): AppConfig {
       /* unreadable config: fall back to the default port */
     }
   }
-  const cfg: AppConfig = { token, port, modelsDir: configModelsDir(root), ttsEnabled: configTtsEnabled(root) };
+  const cfg: AppConfig = {
+    token,
+    port,
+    modelsDir: configModelsDir(root),
+    ttsEnabled: configTtsEnabled(root),
+    ttsModel: configTtsModel(root),
+  };
   writeConfig(root, cfg);
   return cfg;
 }
@@ -113,7 +125,40 @@ export function setConfigTtsEnabled(root: string, enabled: boolean): AppConfig {
     }
   }
   if (token === '') token = newToken();
-  const cfg: AppConfig = { token, port, modelsDir: configModelsDir(root), ttsEnabled: enabled };
+  const cfg: AppConfig = {
+    token,
+    port,
+    modelsDir: configModelsDir(root),
+    ttsEnabled: enabled,
+    ttsModel: configTtsModel(root),
+  };
+  writeConfig(root, cfg);
+  return cfg;
+}
+
+/** Persist the Setup selector. The token, port, models directory, and switch stay. */
+export function setConfigTtsModel(root: string, model: 'en' | 'zh'): AppConfig {
+  ensureDir(root);
+  const file = configPath(root);
+  let token = '';
+  let port = DEFAULT_PORT;
+  if (existsSync(file)) {
+    try {
+      const parsed = JSON.parse(readFileSync(file, 'utf8')) as Partial<AppConfig>;
+      if (typeof parsed.token === 'string') token = parsed.token;
+      if (typeof parsed.port === 'number') port = parsed.port;
+    } catch {
+      /* unreadable config: keep the defaults and still record the model */
+    }
+  }
+  if (token === '') token = newToken();
+  const cfg: AppConfig = {
+    token,
+    port,
+    modelsDir: configModelsDir(root),
+    ttsEnabled: configTtsEnabled(root),
+    ttsModel: model,
+  };
   writeConfig(root, cfg);
   return cfg;
 }
