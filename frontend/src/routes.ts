@@ -17,7 +17,7 @@ export type DirectionFilter = 'all' | 'in' | 'out';
  * (breadcrumb, back control, rail). Keep this list in sync with
  * {@link PRIMARY_PAGES}.
  */
-export type TopPageId = 'phones' | 'settings';
+export type TopPageId = 'phones' | 'setup' | 'settings';
 
 export type PageId = TopPageId | 'messages';
 
@@ -55,6 +55,14 @@ export const ROUTES: Record<PageId, RouteMeta> = {
     parent: null,
     nav: 'primary',
   },
+  setup: {
+    navLabelKey: 'nav.setup',
+    titleKey: 'setup.title',
+    hintKey: 'setup.hint',
+    trail: [{ key: 'nav.setup' }],
+    parent: null,
+    nav: 'primary',
+  },
   settings: {
     navLabelKey: 'nav.settings',
     titleKey: 'settings.title',
@@ -77,7 +85,7 @@ export const ROUTES: Record<PageId, RouteMeta> = {
  * Pages the rail lists, in display order. Every entry also declares
  * `nav: 'primary'` above.
  */
-export const PRIMARY_PAGES: readonly TopPageId[] = ['phones', 'settings'];
+export const PRIMARY_PAGES: readonly TopPageId[] = ['phones', 'setup', 'settings'];
 
 /**
  * The history view, filters included. These live in the hash query string so a
@@ -93,6 +101,7 @@ export interface MessagesParams {
 
 export type MatchedRoute =
   | { id: 'phones'; params: null }
+  | { id: 'setup'; params: null }
   | { id: 'settings'; params: null }
   | { id: 'messages'; params: MessagesParams };
 
@@ -119,6 +128,7 @@ export function messagesRoute(connectionId: string, filters: MessageFilters = {}
 
 export function routeHash(route: MatchedRoute): string {
   if (route.id === 'phones') return '#/';
+  if (route.id === 'setup') return '#/setup';
   if (route.id === 'settings') return '#/settings';
   const { connectionId, direction, type, status, page } = route.params;
   // Defaults stay out of the URL, so the unfiltered view is just the path.
@@ -144,6 +154,7 @@ export function parseRoute(hash = typeof location !== 'undefined' ? location.has
   const raw = hash.startsWith('#') ? hash.slice(1) : hash;
   const url = new URL(raw === '' ? '/' : raw, 'http://companion.local');
   const parts = url.pathname.split('/').filter((part) => part !== '');
+  if (parts[0] === 'setup') return pageRoute('setup');
   if (parts[0] === 'settings') {
     return pageRoute('settings');
   }

@@ -1005,6 +1005,41 @@ td.summary {
   color: var(--muted);
 }
 
+.setup-title {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+
+.setup-status {
+  margin: 12px 0 0;
+  font-weight: 600;
+}
+
+.setup-status.is-on {
+  color: var(--ok);
+}
+
+.setup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.setup-bar {
+  height: 6px;
+  margin-top: 8px;
+  border-radius: 99px;
+  background: var(--field);
+  overflow: hidden;
+}
+
+.setup-bar span {
+  display: block;
+  height: 100%;
+  background: var(--ok);
+}
+
 /* The token is long; a monospace readout keeps it legible and selectable. */
 .token-readout {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;

@@ -7,6 +7,7 @@ import { GEN_PRUNE_INTERVAL_MS, genStore } from './gen/store';
 import { drawThingsRunner } from './gen/drawthings';
 import { GenQueue } from './gen/queue';
 import { DEFAULT_MODEL } from './gen';
+import { createSpeech } from './tts/runtime';
 import { linejsFactory } from './line';
 import { dataDir, ensureDir, genDir, listenHost, listenPort } from './paths';
 import { ConnectionStore } from './store';
@@ -101,12 +102,18 @@ setInterval(() => {
   }
 }, QUEUE_TICK_MS);
 
+const speech = createSpeech(root);
+console.log(
+  `[companion] speech ${config.ttsEnabled ? 'enabled' : 'off'} (model downloads from the Setup page)`,
+);
+
 const app = createApp({
   manager,
   token: config.token,
   port: config.port,
   configRoot: root,
   ...(gen != null ? { gen: { queue: gen, drawThings, store: genImages, ready: cliReady } } : {}),
+  tts: speech,
 });
 
 console.log(`[companion] listening on http://${host}:${config.port}`);

@@ -12,6 +12,7 @@ import { assertId } from './store';
 import { isDirectionFilter, isMessageStatus, type MessageQuery } from './messages';
 import { logJson } from './log';
 import { registerImageRoutes, type ImageRoutesOptions } from './gen';
+import { registerTtsRoutes, type TtsRoutesOptions } from './tts';
 
 export interface AppOptions {
   manager: ConnectionManager;
@@ -34,6 +35,8 @@ export interface AppOptions {
    * not exercise it — the routes are then simply not mounted.
    */
   gen?: ImageRoutesOptions;
+  /** Local speech. Always mounted in the real process; tests omit it. */
+  tts?: TtsRoutesOptions;
 }
 
 /**
@@ -350,6 +353,9 @@ export function createApp(options: AppOptions): Hono {
   // Mounted before the SPA catch-all so the static fallback cannot swallow it.
   if (options.gen != null) {
     registerImageRoutes(app, options.gen);
+  }
+  if (options.tts != null) {
+    registerTtsRoutes(app, options.tts);
   }
 
   app.get('/*', serveStatic({ root: FRONTEND_DIR }));

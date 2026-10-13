@@ -8,6 +8,7 @@
   import PhonesPage from './PhonesPage.svelte';
   import RenameDialog from './RenameDialog.svelte';
   import SettingsPage from './SettingsPage.svelte';
+import SetupPage from './SetupPage.svelte';
   import TitleBar from './TitleBar.svelte';
   import { bootstrap, fetchHealth, listConnections, type Connection, type MessageDirection } from './api';
   import { tr as translate } from './i18n';
@@ -125,6 +126,8 @@
       <div class="page-body">
         <p class="hint">{$translate('common.loading')}</p>
       </div>
+    {:else if current.id === 'setup'}
+      <SetupPage />
     {:else if current.id === 'settings'}
       <SettingsPage />
     {:else if history != null}

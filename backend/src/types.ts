@@ -182,6 +182,11 @@ export interface AppConfig {
    * `null`/absent means "let the CLI use its own default".
    */
   modelsDir?: string | null;
+  /**
+   * Local speech is served only when this is true AND the Kokoro files are on
+   * disk. Absent means off, so an old config.json does not start speaking.
+   */
+  ttsEnabled?: boolean;
 }
 
 export interface InboundText {

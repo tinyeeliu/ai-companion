@@ -76,6 +76,49 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return body as T;
 }
 
+export interface SetupFeature {
+  id: string;
+  downloaded: boolean;
+  enabled: boolean;
+  downloading: boolean;
+  received: number;
+  total: number;
+  error: string | null;
+}
+
+export function getSetup(): Promise<{ features: SetupFeature[] }> {
+  return request('/api/v1/setup.json');
+}
+
+export function downloadTts(): Promise<SetupFeature> {
+  return request('/api/v1/setup/tts/download.json', { method: 'POST' });
+}
+
+export function setTtsEnabled(enabled: boolean): Promise<SetupFeature> {
+  return request('/api/v1/setup/tts.json', { method: 'PUT', body: JSON.stringify({ enabled }) });
+}
+
+/** Plays through the speech endpoint the same way another app on this machine would. */
+export async function testSpeech(): Promise<Blob> {
+  const headers = new Headers({ 'content-type': 'application/json' });
+  if (token !== '') headers.set('Authorization', `Bearer ${token}`);
+  const res = await fetch('/api/v1/audio/speech', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      model: 'kokoro-82m',
+      input: 'Hello from AI Companion.',
+      voice: 'default',
+      response_format: 'wav',
+    }),
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { message?: string };
+    throw new Error(typeof body.message === 'string' ? body.message : t('error.http', { status: res.status }));
+  }
+  return res.blob();
+}
+
 export function listConnections(): Promise<{ connections: Connection[] }> {
   return request('/api/v1/im/connection.json');
 }

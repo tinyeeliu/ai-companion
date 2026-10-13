@@ -51,6 +51,9 @@ Tauri (package/)  →  bun sidecar (backend/)  →  Baileys WhatsApp socket
 | `backend/src/gen/drawthings.ts` | The only place that spawns the CLI; enforces its timeout |
 | `backend/src/gen/store.ts` | `data/gen/{id}.png` cache for `response_format: "url"` |
 | `backend/src/gen/index.ts` | OpenAI-shaped routes, validation, `response_format` disposition |
+| `backend/src/tts/index.ts` | OpenAI-shaped speech route and the Setup JSON |
+| `backend/src/tts/engine.ts` | The only place that spawns `sherpa-onnx-offline-tts` |
+| `backend/src/tts/setup.ts` | Download and the enable switch for local speech |
 
 | `backend/src/disconnect.ts` | Close-code map (401/440/405/515/500) |
 
@@ -69,6 +72,8 @@ data/messages.sqlite              # ChatMessage: history log + durable delivery 
 data/media.sqlite                 # MediaObject / MediaUrl: the media cache meta
 data/media/{sha256}.{ext}         # cached plaintext, content-addressed
 data/gen/{id}.png                 # generated image kept for response_format:"url"; a cache, not storage
+data/tts/kokoro-multi-lang-v1_0/  # Kokoro weights, voices, espeak-ng-data; filled by Setup
+data/tts/engine/                  # sherpa-onnx-offline-tts for this OS; filled by Setup
 ```
 
 Inbound and outbound chat is stored in SQLite table `"ChatMessage"` for 7 days. Prune runs at boot and every 24 hours. Dashboard Received/Sent counters stay as lifetime totals in `meta.json`: Received increments on every vendor inbound message, Sent increments on every outbound queue write — a dashboard `POST /connection/:id/message` and a cloud `sendMessage`/`sendCompactMessage` invoke alike.
@@ -202,6 +207,34 @@ Clearing it is one `rm -rf data/gen`.
 The whole feature degrades rather than fails: if `draw-things-cli` is not on PATH,
 the routes answer `503 CLI_UNAVAILABLE` and the rest of Companion is unaffected.
 
+## Local speech
+
+`POST /api/v1/audio/speech` speaks the **OpenAI Create speech** body, and only
+that: `model`, `input`, `voice`, `response_format`, `speed`, `instructions`,
+`stream_format`. Unknown fields are a `400`. The success body is audio bytes,
+so the path has no `.json` suffix. Errors still use `{ error, message }`. An
+OpenAI SDK cannot be pointed here unchanged, because the path is not
+`/v1/audio/speech`.
+
+| Request field | What happens |
+| --- | --- |
+| `model` | Must be `kokoro-82m` |
+| `input` | Required, 1–4096 characters |
+| `voice` | `"default"` or `{ "id": "default" }` is `af_heart` (speaker 3). A Kokoro id, or `alloy`, `echo`, `fable`, `onyx`, `nova`. Anything else, including the other OpenAI names, is `400` |
+| `response_format` | `wav` (default) or `pcm` (signed 16-bit little-endian, 24 kHz, mono). `mp3`, `opus`, `aac`, `flac` are `400` |
+| `speed` | `0.25`–`4.0`, default `1`. Kokoro's length scale is `1/speed` (a larger OpenAI speed is faster) |
+| `instructions` | Accepted and ignored. Kokoro has no style prompt |
+| `stream_format` | `audio` only. `sse` is `400` |
+
+Nothing is fetched at boot. The Setup page downloads the Kokoro archive and the
+sherpa-onnx binary for this machine into `data/tts/`, then the enable switch in
+`config.json` (`ttsEnabled`) turns the route on. Until then the route answers
+`503 TTS_NOT_READY` or `503 TTS_DISABLED`. Each request runs
+`sherpa-onnx-offline-tts` once, one at a time, on its own queue so a FLUX job
+does not hold up a sentence. A full queue is `503 QUEUE_FULL`. A wedged child
+is killed and the caller gets `504 TTS_TIMEOUT`. A non-zero exit is
+`500 TTS_FAILED`.
+
 ## REST
 
 Auth column: `loopback` means a caller on this machine needs no token; every other caller needs `Authorization: Bearer <token>`.
@@ -229,6 +262,10 @@ Auth column: `loopback` means a caller on this machine needs no token; every oth
 | POST | `/api/v1/settings/token/regenerate.json` | loopback |
 | POST | `/api/v1/image/generations.json` | loopback |
 | GET | `/api/v1/image/generations/:id.png` | loopback |
+| POST | `/api/v1/audio/speech` | loopback |
+| GET | `/api/v1/setup.json` | loopback |
+| POST | `/api/v1/setup/tts/download.json` | loopback |
+| PUT | `/api/v1/setup/tts.json` | loopback |
 
 The two image routes live outside `/api/v1/im/*` because they are not about a
 channel. They follow the same rule as everything else: open on loopback, bearer

@@ -57,6 +57,11 @@ export function genDir(root: string): string {
   return join(root, 'gen');
 }
 
+/** Kokoro weights and the sherpa-onnx engine. A cache the Setup page fills. */
+export function ttsDir(root: string): string {
+  return join(root, 'tts');
+}
+
 export function whatsappRoot(root: string): string {
   return channelRoot(root, 'whatsapp');
 }

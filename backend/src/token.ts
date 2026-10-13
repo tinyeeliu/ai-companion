@@ -24,17 +24,27 @@ function writeConfig(root: string, config: AppConfig): void {
  * callers: a token change in Settings must not drop a models directory the
  * operator set by hand.
  */
-export function configModelsDir(root: string): string | null {
+function readConfig(root: string): Partial<AppConfig> | null {
   const file = configPath(root);
   if (!existsSync(file)) return null;
   try {
-    const parsed = JSON.parse(readFileSync(file, 'utf8')) as Partial<AppConfig>;
-    return typeof parsed.modelsDir === 'string' && parsed.modelsDir.trim() !== ''
-      ? parsed.modelsDir.trim()
-      : null;
+    return JSON.parse(readFileSync(file, 'utf8')) as Partial<AppConfig>;
   } catch {
     return null;
   }
+}
+
+export function configModelsDir(root: string): string | null {
+  const parsed = readConfig(root);
+  if (parsed == null) return null;
+  return typeof parsed.modelsDir === 'string' && parsed.modelsDir.trim() !== ''
+    ? parsed.modelsDir.trim()
+    : null;
+}
+
+/** Speech stays off until Setup turns it on. A missing field is off. */
+export function configTtsEnabled(root: string): boolean {
+  return readConfig(root)?.ttsEnabled === true;
 }
 
 export function loadOrCreateConfig(root: string, port: number = DEFAULT_PORT): AppConfig {
@@ -47,6 +57,7 @@ export function loadOrCreateConfig(root: string, port: number = DEFAULT_PORT): A
         token: parsed.token,
         port: typeof parsed.port === 'number' ? parsed.port : port,
         modelsDir: configModelsDir(root),
+        ttsEnabled: parsed.ttsEnabled === true,
       };
       if (cfg.port !== port) {
         cfg.port = port;
@@ -55,7 +66,7 @@ export function loadOrCreateConfig(root: string, port: number = DEFAULT_PORT): A
       return cfg;
     }
   }
-  const cfg: AppConfig = { token: newToken(), port, modelsDir: null };
+  const cfg: AppConfig = { token: newToken(), port, modelsDir: null, ttsEnabled: false };
   writeConfig(root, cfg);
   return cfg;
 }
@@ -78,7 +89,31 @@ export function setConfigToken(root: string, token: string): AppConfig {
       /* unreadable config: fall back to the default port */
     }
   }
-  const cfg: AppConfig = { token, port, modelsDir: configModelsDir(root) };
+  const cfg: AppConfig = { token, port, modelsDir: configModelsDir(root), ttsEnabled: configTtsEnabled(root) };
+  writeConfig(root, cfg);
+  return cfg;
+}
+
+/**
+ * Persist the Setup page's speech switch. The token, port, and models directory
+ * stay as they are — this call must not rotate a credential or move a model dir.
+ */
+export function setConfigTtsEnabled(root: string, enabled: boolean): AppConfig {
+  ensureDir(root);
+  const file = configPath(root);
+  let token = '';
+  let port = DEFAULT_PORT;
+  if (existsSync(file)) {
+    try {
+      const parsed = JSON.parse(readFileSync(file, 'utf8')) as Partial<AppConfig>;
+      if (typeof parsed.token === 'string') token = parsed.token;
+      if (typeof parsed.port === 'number') port = parsed.port;
+    } catch {
+      /* unreadable config: keep the defaults and still record the switch */
+    }
+  }
+  if (token === '') token = newToken();
+  const cfg: AppConfig = { token, port, modelsDir: configModelsDir(root), ttsEnabled: enabled };
   writeConfig(root, cfg);
   return cfg;
 }
