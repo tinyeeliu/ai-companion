@@ -225,7 +225,7 @@ OpenAI SDK cannot be pointed here unchanged, because the path is not
 | --- | --- |
 | `model` | Must be `kokoro-82m` |
 | `input` | Required, 1–4096 characters |
-| `voice` | `"default"` is the loaded checkpoint's own voice: `af_heart` (speaker 3) for English and for Windows, `zf_001` for the Chinese checkpoint. A Kokoro id, or `alloy`, `echo`, `fable`, `onyx`, `nova`, on the English and Windows engines. On the Chinese checkpoint a voice id is `xx_name`. `os/<name>` is a voice from `say` or Windows SAPI and does not require Kokoro to be downloaded or enabled. A voice that is not installed is `400` |
+| `voice` | `"default"` is the Setup selection's voice: `af_heart` (speaker 3) for English and for Windows, `zf_001` for Chinese. A Kokoro id is spoken by the checkpoint that contains that file, so `af_heart` uses the English checkpoint even while Setup has Chinese selected. The selection in `config.json` is not changed. `alloy`, `echo`, `fable`, `onyx`, and `nova` map to English speakers. `os/<name>` is a voice from `say` or Windows SAPI and does not require Kokoro to be downloaded or enabled. A voice that is not installed is `400`. A named voice whose checkpoint is not downloaded is `503` |
 | `response_format` | `wav` (default) or `pcm` (signed 16-bit little-endian, 24 kHz, mono). `mp3`, `opus`, `aac`, `flac` are `400` |
 | `speed` | `0.25`–`4.0`, default `1`. On Apple Silicon this number is passed to mlx-audio. On Windows, sherpa's Kokoro length scale is `1/speed` (a larger OpenAI speed is faster) |
 | `instructions` | Accepted and ignored. Kokoro has no style prompt |
@@ -235,7 +235,7 @@ Nothing is fetched at boot. On Apple Silicon the Setup page downloads `uv`,
 creates a Python 3.12 environment under `data/tts/python/` with pinned
 `mlx-audio`, `misaki[en,zh]`, and `en_core_web_sm`, and downloads one Kokoro checkpoint into
 `data/tts/mlx/hub`. The selector in `config.json` (`ttsModel`, `en` or `zh`)
-chooses which checkpoint is loaded. English is `mlx-community/Kokoro-82M-bf16`
+chooses which checkpoint `"default"` uses, and which one Enable loads. A request that names a voice from the other downloaded checkpoint loads that checkpoint for the request and then leaves the selection unchanged. English is `mlx-community/Kokoro-82M-bf16`
 (language `a`; British voices `bf_` / `bm_` use `b`). Chinese is
 `FluidInference/kokoro-82m-v1.1-zh-mlx` (language `z`, misaki's 1.1 Chinese frontend). A single Python process
 stays up, holds that checkpoint, and speaks each request. It uses the Metal

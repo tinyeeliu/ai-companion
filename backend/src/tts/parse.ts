@@ -93,11 +93,16 @@ export function parseSpeechRequest(body: Record<string, unknown>, loaded: TtsMod
 function resolveLoadedVoice(name: string, loaded: TtsModelId | null): ResolvedVoice | null {
   const os = osVoice(name);
   if (name.trim().startsWith('os/')) return os;
-  if (loaded === 'zh') {
+  if (loaded != null) {
     const trimmed = name.trim();
-    const id = trimmed === 'default' ? TTS_MODELS.zh.voice : trimmed;
-    if (!/^[a-z]{2}_[a-z0-9_]+$/i.test(id)) return null;
-    return { id, sid: 0 };
+    if (trimmed === 'default') {
+      const id = loaded === 'zh' ? TTS_MODELS.zh.voice : TTS_MODELS.en.voice;
+      return resolveVoice(id) ?? { id, sid: 0 };
+    }
+    const known = resolveVoice(trimmed);
+    if (known != null) return known;
+    if (/^[a-z]{2}_[a-z0-9_]+$/i.test(trimmed)) return { id: trimmed, sid: 0 };
+    return null;
   }
   return resolveVoice(name);
 }

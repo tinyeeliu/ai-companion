@@ -66,6 +66,19 @@ function toVoice(voice: OsVoice): VoiceInfo {
   };
 }
 
+/**
+ * The checkpoint that owns this voice file. `af_heart` is only in the English
+ * snapshot; `zf_001` is only in the Chinese one. A name in both, or in neither,
+ * returns null so the caller keeps the Setup selection.
+ */
+export async function modelForKokoroVoice(root: string, voiceId: string): Promise<TtsModelId | null> {
+  const inEn = (await snapshotVoiceIds(root, 'en', '.safetensors')).includes(voiceId);
+  const inZh = (await snapshotVoiceIds(root, 'zh', '.npy')).includes(voiceId);
+  if (inEn && !inZh) return 'en';
+  if (inZh && !inEn) return 'zh';
+  return null;
+}
+
 async function kokoroIds(root: string): Promise<string[]> {
   if (usesMlxEngine()) {
     const ids = new Set<string>();

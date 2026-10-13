@@ -13,7 +13,8 @@ import { join } from 'node:path';
 import { HttpError } from '../types';
 import { configTtsModel } from '../token';
 import { TtsFailedError, TtsTimeoutError, TTS_TIMEOUT_MS } from './engine';
-import { pythonBin, workerEnv } from './layout';
+import { modelForKokoroVoice } from './catalog';
+import { mlxModelReady, pythonBin, workerEnv } from './layout';
 import { parseTtsModel, speechLang, type TtsModelId } from './models';
 import type { SpeechJob } from './parse';
 import type { SpeechResult, SpeechRunner } from './queue';
@@ -72,7 +73,11 @@ export class MlxSession {
 
   private async speak(job: SpeechJob): Promise<SpeechResult> {
     return this.enqueue(async () => {
-      const model = parseTtsModel(configTtsModel(this.root)) ?? 'en';
+      const selected = parseTtsModel(configTtsModel(this.root)) ?? 'en';
+      const model = (await modelForKokoroVoice(this.root, job.voice.id)) ?? selected;
+      if (!mlxModelReady(this.root, model)) {
+        throw new HttpError(503, 'TTS_NOT_READY', 'Speech model is not downloaded');
+      }
       if (this.loaded !== model) {
         await this.ensure();
         await this.request({ cmd: 'load', model }, LOAD_TIMEOUT_MS);

@@ -13,7 +13,7 @@ import { ConnectionStore } from '../src/store';
 import { setConfigTtsEnabled, setConfigToken } from '../src/token';
 import { downloadVerified } from '../src/tts/download';
 import { buildTtsArgs } from '../src/tts/engine';
-import { kokoroVoice } from '../src/tts/catalog';
+import { kokoroVoice, modelForKokoroVoice } from '../src/tts/catalog';
 import { engineDir, mlxHubDir, modelDir, modelMarker, pythonBin, pythonDir, usesMlxEngine } from '../src/tts/layout';
 import { parseSapiListing, parseSayListing } from '../src/tts/os';
 import { speechLang } from '../src/tts/models';
@@ -199,6 +199,28 @@ describe('speech model selection', () => {
     const named = parseSpeechRequest({ model: 'kokoro-82m', input: '你好', voice: 'zf_026' }, 'zh');
     expect(named.voice.id).toBe('zf_026');
     expect(() => parseSpeechRequest({ model: 'kokoro-82m', input: '你好', voice: 'shimmer' }, 'zh')).toThrow(/voice/);
+  });
+
+  test('a voice from the other checkpoint is accepted without changing default', () => {
+    const english = parseSpeechRequest({ model: 'kokoro-82m', input: 'Hello', voice: 'af_heart' }, 'zh');
+    expect(english.voice.id).toBe('af_heart');
+    const chinese = parseSpeechRequest({ model: 'kokoro-82m', input: '你好', voice: 'zf_001' }, 'en');
+    expect(chinese.voice.id).toBe('zf_001');
+    const stillChinese = parseSpeechRequest({ model: 'kokoro-82m', input: '你好', voice: 'default' }, 'zh');
+    expect(stillChinese.voice.id).toBe('zf_001');
+  });
+
+  test('af_heart belongs to the English checkpoint and zf_001 to Chinese', async () => {
+    const root = tempDir();
+    const enVoice = join(mlxHubDir(root), 'models--mlx-community--Kokoro-82M-bf16', 'snapshots', 'x', 'voices', 'af_heart.safetensors');
+    const zhVoice = join(mlxHubDir(root), 'models--FluidInference--kokoro-82m-v1.1-zh-mlx', 'snapshots', 'x', 'voices', 'zf_001.npy');
+    mkdirSync(dirname(enVoice), { recursive: true });
+    mkdirSync(dirname(zhVoice), { recursive: true });
+    writeFileSync(enVoice, '');
+    writeFileSync(zhVoice, '');
+    expect(await modelForKokoroVoice(root, 'af_heart')).toBe('en');
+    expect(await modelForKokoroVoice(root, 'zf_001')).toBe('zh');
+    expect(await modelForKokoroVoice(root, 'missing')).toBeNull();
   });
 });
 
