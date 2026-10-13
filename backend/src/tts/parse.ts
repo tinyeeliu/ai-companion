@@ -7,6 +7,7 @@
  * buffered event.
  */
 import { HttpError } from '../types';
+import { TTS_MODELS, type TtsModelId } from './models';
 import { resolveVoice, type ResolvedVoice } from './voices';
 
 const ALLOWED_KEYS = new Set([
@@ -29,7 +30,7 @@ export interface SpeechJob {
   format: 'wav' | 'pcm';
 }
 
-export function parseSpeechRequest(body: Record<string, unknown>): SpeechJob {
+export function parseSpeechRequest(body: Record<string, unknown>, loaded: TtsModelId | null = null): SpeechJob {
   const unknownKeys = Object.keys(body).filter((key) => !ALLOWED_KEYS.has(key));
   if (unknownKeys.length > 0) {
     throw new HttpError(
@@ -50,7 +51,7 @@ export function parseSpeechRequest(body: Record<string, unknown>): SpeechJob {
   }
 
   const voiceName = voiceNameOf(body.voice);
-  const voice = voiceName == null ? null : resolveVoice(voiceName);
+  const voice = voiceName == null ? null : resolveLoadedVoice(voiceName, loaded);
   if (voice == null) {
     throw new HttpError(
       400,
@@ -87,6 +88,16 @@ export function parseSpeechRequest(body: Record<string, unknown>): SpeechJob {
   }
 
   return { input, voice, speed, format };
+}
+
+function resolveLoadedVoice(name: string, loaded: TtsModelId | null): ResolvedVoice | null {
+  if (loaded === 'zh') {
+    const trimmed = name.trim();
+    const id = trimmed === 'default' ? TTS_MODELS.zh.voice : trimmed;
+    if (!/^[a-z]{2}_[a-z0-9_]+$/i.test(id)) return null;
+    return { id, sid: 0 };
+  }
+  return resolveVoice(name);
 }
 
 function voiceNameOf(voice: unknown): string | null {

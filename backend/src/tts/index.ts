@@ -8,6 +8,7 @@ import type { Hono } from 'hono';
 import { HttpError } from '../types';
 import { TtsFailedError, TtsTimeoutError } from './engine';
 import { parseSpeechRequest } from './parse';
+import { usesMlxEngine } from './layout';
 import { TtsQueueFullError, type SpeechResult, type TtsQueue } from './queue';
 import type { TtsSetup } from './setup';
 
@@ -26,7 +27,8 @@ export function registerTtsRoutes(app: Hono, options: TtsRoutesOptions): void {
     if (!setup.enabled()) {
       throw new HttpError(503, 'TTS_DISABLED', 'Speech is turned off');
     }
-    const job = parseSpeechRequest(await readJson(c));
+    const body = await readJson(c);
+    const job = parseSpeechRequest(body, usesMlxEngine() ? setup.model() : null);
     const result = await submit(queue, job);
     return c.body(new Uint8Array(result.audio), 200, { 'content-type': result.contentType });
   });
@@ -42,6 +44,12 @@ export function registerTtsRoutes(app: Hono, options: TtsRoutesOptions): void {
 
   app.put('/api/v1/setup/tts.json', async (c) => {
     const body = await readJson(c);
+    if (body.model != null) {
+      if (typeof body.model !== 'string') {
+        throw new HttpError(400, 'INVALID_PARAM', 'model must be en or zh');
+      }
+      return c.json(await setup.setModel(body.model));
+    }
     if (typeof body.enabled !== 'boolean') {
       throw new HttpError(400, 'INVALID_PARAM', 'enabled must be a boolean');
     }

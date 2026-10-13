@@ -49,6 +49,9 @@ const en: Dict = {
   'setup.tts.test': 'Test',
   'setup.tts.testing': 'Speaking…',
   'setup.tts.testOk': 'Played a short sample in {ms} ms.',
+  'setup.tts.model': 'Model',
+  'setup.tts.modelEn': 'English',
+  'setup.tts.modelZh': 'Chinese',
   'setup.tts.progress': '{received} of {total}',
 
   'page.received.title': 'Received',

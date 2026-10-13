@@ -53,8 +53,9 @@ Tauri (package/)  →  bun sidecar (backend/)  →  Baileys WhatsApp socket
 | `backend/src/gen/index.ts` | OpenAI-shaped routes, validation, `response_format` disposition |
 | `backend/src/tts/index.ts` | OpenAI-shaped speech route and the Setup JSON |
 | `backend/src/tts/engine.ts` | The only place that spawns `sherpa-onnx-offline-tts` (Windows) |
-| `backend/src/tts/mlx.ts` | The only place that spawns `KokoroCLI` (Apple Silicon, MLX) |
-| `backend/src/tts/setup.ts` | Download and the enable switch for local speech |
+| `backend/src/tts/mlx.ts` | Talks to the resident mlx-audio process (Apple Silicon) |
+| `backend/src/tts/mlx_worker.py` | Loads one Kokoro checkpoint and writes wav |
+| `backend/src/tts/setup.ts` | Download, the model selector, and the enable switch |
 
 | `backend/src/disconnect.ts` | Close-code map (401/440/405/515/500) |
 
@@ -73,7 +74,9 @@ data/messages.sqlite              # ChatMessage: history log + durable delivery 
 data/media.sqlite                 # MediaObject / MediaUrl: the media cache meta
 data/media/{sha256}.{ext}         # cached plaintext, content-addressed
 data/gen/{id}.png                 # generated image kept for response_format:"url"; a cache, not storage
-data/tts/mlx/                     # Apple Silicon: KokoroCLI, config.json, kokoro-v1_0.safetensors, voices/
+data/tts/mlx/hub/                 # Apple Silicon: Hugging Face cache for the selected Kokoro checkpoint
+data/tts/mlx/ready/               # Apple Silicon: marker written after that checkpoint is on disk
+data/tts/python/                  # Apple Silicon: uv, the venv, and python.ready; filled by Setup
 data/tts/kokoro-multi-lang-v1_0/  # Windows: Kokoro weights, voices, espeak-ng-data; filled by Setup
 data/tts/engine/                  # Windows: sherpa-onnx-offline-tts; filled by Setup
 ```
@@ -222,25 +225,29 @@ OpenAI SDK cannot be pointed here unchanged, because the path is not
 | --- | --- |
 | `model` | Must be `kokoro-82m` |
 | `input` | Required, 1–4096 characters |
-| `voice` | `"default"` or `{ "id": "default" }` is `af_heart` (speaker 3). A Kokoro id, or `alloy`, `echo`, `fable`, `onyx`, `nova`. Anything else, including the other OpenAI names, is `400` |
+| `voice` | `"default"` is the loaded checkpoint's own voice: `af_heart` (speaker 3) for English and for Windows, `zf_001` for the Chinese checkpoint. A Kokoro id, or `alloy`, `echo`, `fable`, `onyx`, `nova`, on the English and Windows engines. On the Chinese checkpoint a voice id is `xx_name`. A voice that is not in the loaded pack is `400` |
 | `response_format` | `wav` (default) or `pcm` (signed 16-bit little-endian, 24 kHz, mono). `mp3`, `opus`, `aac`, `flac` are `400` |
-| `speed` | `0.25`–`4.0`, default `1`. On Apple Silicon this number is passed to KokoroCLI. On Windows, sherpa's Kokoro length scale is `1/speed` (a larger OpenAI speed is faster) |
+| `speed` | `0.25`–`4.0`, default `1`. On Apple Silicon this number is passed to mlx-audio. On Windows, sherpa's Kokoro length scale is `1/speed` (a larger OpenAI speed is faster) |
 | `instructions` | Accepted and ignored. Kokoro has no style prompt |
 | `stream_format` | `audio` only. `sse` is `400` |
 
-Nothing is fetched at boot. On Apple Silicon the Setup page downloads the MLX
-weights (`config.json`, `kokoro-v1_0.safetensors`, `voices/af_heart.npy`) into
-`data/tts/mlx/`. The `KokoroCLI` binary is built by
-`scripts/build-kokoro-mlx.sh` and copied there; it is not part of the download.
-Each request runs `KokoroCLI --backend mlx` once. That process uses the Metal
-GPU. Its text-to-phoneme step is English (`en-us`, or `en-gb` for `bf_` / `bm_`
-voices). On Windows the Setup page downloads the Kokoro archive and
-`sherpa-onnx-offline-tts.exe` instead, and each request runs that CPU binary.
-The enable switch in `config.json` (`ttsEnabled`) turns the route on. Until the
-files for this machine are present the route answers `503 TTS_NOT_READY` or
-`503 TTS_DISABLED`. Speech runs one at a time, on its own queue, so a FLUX job
-does not hold up a sentence. A voice with no `.npy` on Apple Silicon is `400`.
-A full queue is `503 QUEUE_FULL`. A wedged child is killed and the caller gets
+Nothing is fetched at boot. On Apple Silicon the Setup page downloads `uv`,
+creates a Python 3.12 environment under `data/tts/python/` with pinned
+`mlx-audio`, `misaki[en,zh]`, and `en_core_web_sm`, and downloads one Kokoro checkpoint into
+`data/tts/mlx/hub`. The selector in `config.json` (`ttsModel`, `en` or `zh`)
+chooses which checkpoint is loaded. English is `mlx-community/Kokoro-82M-bf16`
+(language `a`; British voices `bf_` / `bm_` use `b`). Chinese is
+`FluidInference/kokoro-82m-v1.1-zh-mlx` (language `z`). A single Python process
+stays up, holds that checkpoint, and speaks each request. It uses the Metal
+GPU. The request field `model` stays `kokoro-82m`. On Windows the Setup page
+downloads the Kokoro archive and `sherpa-onnx-offline-tts.exe` instead, shows
+no selector, and each request runs that CPU binary. The enable switch
+(`ttsEnabled`) turns the route on and, on Apple Silicon, loads the selected
+checkpoint. Disable unloads the weights and leaves the files. Until the files
+for this machine and the selected checkpoint are present the route answers
+`503 TTS_NOT_READY` or `503 TTS_DISABLED`. Speech runs one at a time, on its
+own queue, so a FLUX job does not hold up a sentence. A full queue is
+`503 QUEUE_FULL`. A wedged child is killed and the caller gets
 `504 TTS_TIMEOUT`. A non-zero exit is `500 TTS_FAILED`.
 
 ## REST

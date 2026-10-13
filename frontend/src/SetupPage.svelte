@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
-  import { downloadTts, getSetup, setTtsEnabled, testSpeech, type SetupFeature } from './api';
+  import { downloadTts, getSetup, setTtsEnabled, setTtsModel, testSpeech, testSpeechText, type SetupFeature } from './api';
   import { t, tr as translate } from './i18n';
 
   /**
@@ -10,6 +10,7 @@
   let feature = $state<SetupFeature | null>(null);
   let error = $state('');
   let note = $state('');
+  let spoken = $state('');
   let testing = $state(false);
   let audioUrl = '';
   let timer: ReturnType<typeof setInterval> | undefined;
@@ -53,9 +54,22 @@
     if (audioUrl !== '') URL.revokeObjectURL(audioUrl);
   });
 
+  async function choose(model: string): Promise<void> {
+    if (model !== 'en' && model !== 'zh') return;
+    error = '';
+    note = '';
+    spoken = '';
+    try {
+      apply(await setTtsModel(model));
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+    }
+  }
+
   async function download(): Promise<void> {
     error = '';
     note = '';
+    spoken = '';
     try {
       apply(await downloadTts());
     } catch (err) {
@@ -66,6 +80,7 @@
   async function setEnabled(enabled: boolean): Promise<void> {
     error = '';
     note = '';
+    spoken = '';
     try {
       apply(await setTtsEnabled(enabled));
     } catch (err) {
@@ -76,14 +91,17 @@
   async function test(): Promise<void> {
     error = '';
     note = '';
+    spoken = '';
     testing = true;
+    const text = testSpeechText(feature?.model ?? null);
     const started = performance.now();
     try {
-      const blob = await testSpeech();
+      const blob = await testSpeech(feature?.model ?? null);
       const delayMs = Math.round(performance.now() - started);
       if (audioUrl !== '') URL.revokeObjectURL(audioUrl);
       audioUrl = URL.createObjectURL(blob);
       await new Audio(audioUrl).play();
+      spoken = text;
       note = t('setup.tts.testOk', { ms: delayMs });
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
@@ -109,6 +127,20 @@
     <section class="settings-card">
       <h2 class="setup-title">{$translate('setup.tts.title')}</h2>
       <p class="note">{$translate('setup.tts.hint')}</p>
+      {#if feature.models.length > 0 && feature.model}
+        <label class="setup-model">
+          <span>{$translate('setup.tts.model')}</span>
+          <select
+            value={feature.model}
+            disabled={feature.downloading || testing}
+            onchange={(event) => void choose(event.currentTarget.value)}
+          >
+            {#each feature.models as item (item.id)}
+              <option value={item.id}>{$translate(item.id === 'zh' ? 'setup.tts.modelZh' : 'setup.tts.modelEn')}</option>
+            {/each}
+          </select>
+        </label>
+      {/if}
       <p class="setup-status" class:is-on={feature.enabled}>{statusLabel(feature)}</p>
       {#if feature.downloading && feature.total > 0}
         <p class="note">
@@ -136,6 +168,9 @@
           {$translate(testing ? 'setup.tts.testing' : 'setup.tts.test')}
         </button>
       </div>
+      {#if spoken}
+        <p class="setup-spoken">{spoken}</p>
+      {/if}
       {#if note}
         <p class="note">{note}</p>
       {/if}

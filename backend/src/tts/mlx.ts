@@ -149,10 +149,11 @@ export class MlxSession {
     const child = this.child;
     if (child == null) return Promise.reject(new TtsFailedError('speech process is not running'));
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        reject(new TtsTimeoutError(timeoutMs));
-      }, timeoutMs);
-      this.waiters.push((reply) => {
+      let settled = false;
+      let timer: ReturnType<typeof setTimeout>;
+      const onReply = (reply: WorkerReply) => {
+        if (settled) return;
+        settled = true;
         clearTimeout(timer);
         if (reply.ok === false) {
           const message = reply.error ?? 'mlx-audio failed';
@@ -164,7 +165,16 @@ export class MlxSession {
           return;
         }
         resolve(reply);
-      });
+      };
+      timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        const index = this.waiters.indexOf(onReply);
+        if (index >= 0) this.waiters.splice(index, 1);
+        child.kill('SIGKILL');
+        reject(new TtsTimeoutError(timeoutMs));
+      }, timeoutMs);
+      this.waiters.push(onReply);
       child.stdin.write(`${JSON.stringify(cmd)}\n`);
     });
   }

@@ -54,6 +54,61 @@ def download(model_id):
         handle.write(repo + "\n")
 
 
+def install_npy_voices():
+    """mlx-audio 0.5.8 loads voices/*.safetensors. The Chinese checkpoint ships .npy."""
+    from pathlib import Path
+
+    import mlx.core as mx
+    import numpy as np
+    from huggingface_hub import snapshot_download
+    from mlx_audio.tts.models.kokoro.pipeline import KokoroPipeline
+    from mlx_audio.tts.models.kokoro.voice import load_voice_tensor
+
+    def voice_file(repo_id, voice, ext):
+        pattern = f"voices/{voice}.{ext}"
+        try:
+            folder = Path(snapshot_download(repo_id, allow_patterns=[pattern], local_files_only=True))
+        except Exception:
+            folder = Path(snapshot_download(repo_id, allow_patterns=[pattern]))
+        path = folder / "voices" / f"{voice}.{ext}"
+        return path if path.is_file() else None
+
+    def load_single_voice(self, voice):
+        if voice in self.voices:
+            return self.voices[voice]
+        safetensors = voice_file(self.repo_id, voice, "safetensors")
+        npy = None if safetensors is not None else voice_file(self.repo_id, voice, "npy")
+        if safetensors is not None:
+            pack = load_voice_tensor(str(safetensors))
+        elif npy is not None:
+            pack = mx.array(np.load(npy))
+        else:
+            raise FileNotFoundError(f"Voice {voice} not found")
+        self.voices[voice] = pack
+        return pack
+
+    KokoroPipeline.load_single_voice = load_single_voice
+
+
+def install_mlx_checkpoint_loader():
+    """The Chinese checkpoint is already in MLX layout. mlx-audio's sanitizer
+    transposes PyTorch checkpoints and would transpose this one a second time.
+    """
+    from mlx_audio.tts.models.kokoro.kokoro import Model
+
+    if getattr(Model.sanitize, "_companion", False):
+        return
+    original = Model.sanitize
+
+    def sanitize(self, weights):
+        if any("Wx_forward" in key for key in weights):
+            return dict(weights)
+        return original(self, weights)
+
+    sanitize._companion = True
+    Model.sanitize = sanitize
+
+
 def load(model_id):
     global model
     repo = MODELS[model_id]
@@ -61,10 +116,13 @@ def load(model_id):
         from mlx_audio.tts.utils import load_model
         import mlx.core as mx
 
+        install_npy_voices()
+        install_mlx_checkpoint_loader()
         if model is not None:
             model = None
             mx.clear_cache()
         model = load_model(repo)
+        model.repo_id = repo
 
 
 def unload():
@@ -82,19 +140,28 @@ def speak(text, voice, speed, lang, output):
     if model is None:
         raise RuntimeError("model is not loaded")
     import numpy as np
-    import soundfile as sf
 
     chunks = []
     rate = 24000
-    with quiet():
-        for result in model.generate(text=text, voice=voice, speed=float(speed), lang_code=lang):
-            audio = np.asarray(result.audio, dtype=np.float32).reshape(-1)
-            chunks.append(audio)
-            rate = int(getattr(result, "sample_rate", rate))
+    try:
+        with quiet():
+            for result in model.generate(text=text, voice=voice, speed=float(speed), lang_code=lang):
+                audio = np.asarray(result.audio, dtype=np.float32).reshape(-1)
+                chunks.append(audio)
+                rate = int(getattr(result, "sample_rate", rate))
+    except (KeyError, FileNotFoundError) as error:
+        raise RuntimeError(f"Voice {voice} not found") from error
     if not chunks:
         raise RuntimeError("mlx-audio wrote no audio")
     samples = np.concatenate(chunks)
-    sf.write(output, samples, rate, subtype="PCM_16")
+    pcm = (np.clip(samples, -1.0, 1.0) * 32767.0).astype(np.int16)
+    import wave
+
+    with wave.open(output, "wb") as handle:
+        handle.setnchannels(1)
+        handle.setsampwidth(2)
+        handle.setframerate(rate)
+        handle.writeframes(pcm.tobytes())
 
 
 def handle(cmd):

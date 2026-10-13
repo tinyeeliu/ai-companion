@@ -1026,6 +1026,18 @@ td.summary {
   margin-top: 14px;
 }
 
+.setup-model {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.setup-spoken {
+  margin: 12px 0 0;
+  font-size: 15px;
+}
+
 .setup-bar {
   height: 6px;
   margin-top: 8px;

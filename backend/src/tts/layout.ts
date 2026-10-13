@@ -10,12 +10,9 @@ import { ttsDir } from '../paths';
 export const MODEL_DIR_NAME = 'kokoro-multi-lang-v1_0';
 const ENGINE_DIR_NAME = 'engine';
 const MLX_DIR_NAME = 'mlx';
-export const MLX_BINARY_NAME = 'KokoroCLI';
-export const MLX_MODEL_FILE = 'kokoro-v1_0.safetensors';
-export const MLX_DEFAULT_VOICE = 'af_heart.npy';
 const BINARY_NAME = process.platform === 'win32' ? 'sherpa-onnx-offline-tts.exe' : 'sherpa-onnx-offline-tts';
 
-/** Apple Silicon speaks with KokoroCLI (MLX). Every other machine stays on sherpa. */
+/** Apple Silicon speaks with the resident mlx-audio process. Every other machine stays on sherpa. */
 export function usesMlxEngine(platform = process.platform, arch = process.arch): boolean {
   return platform === 'darwin' && arch === 'arm64';
 }
@@ -84,10 +81,6 @@ export function workerEnv(root: string): NodeJS.ProcessEnv {
   };
 }
 
-export function mlxVoicePath(root: string, voiceId: string): string {
-  return join(mlxDir(root), 'voices', `${voiceId}.npy`);
-}
-
 export function incomingDir(root: string): string {
   return join(ttsDir(root), 'incoming');
 }
@@ -111,20 +104,6 @@ export function modelReady(root: string): boolean {
   return Object.values(paths).every((path) => existsSync(path));
 }
 
-/** Weights, the default voice, and the KokoroCLI binary are all present. */
-export function mlxReady(root: string): boolean {
-  const dir = mlxDir(root);
-  return existsSync(join(dir, 'config.json'))
-    && existsSync(join(dir, MLX_MODEL_FILE))
-    && existsSync(join(dir, 'voices', MLX_DEFAULT_VOICE))
-    && existsSync(join(dir, MLX_BINARY_NAME));
-}
-
-export async function findMlxBinary(root: string): Promise<string | null> {
-  const bin = join(mlxDir(root), MLX_BINARY_NAME);
-  return existsSync(bin) ? bin : null;
-}
-
 export async function findEngineBinary(root: string): Promise<string | null> {
   const dir = engineDir(root);
   if (!existsSync(dir)) return null;
@@ -133,10 +112,6 @@ export async function findEngineBinary(root: string): Promise<string | null> {
 
 export async function libraryDirs(root: string): Promise<string[]> {
   return sharedLibraryDirs(engineDir(root));
-}
-
-export async function mlxLibraryDirs(root: string): Promise<string[]> {
-  return sharedLibraryDirs(mlxDir(root));
 }
 
 async function sharedLibraryDirs(dir: string): Promise<string[]> {

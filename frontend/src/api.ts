@@ -84,6 +84,8 @@ export interface SetupFeature {
   received: number;
   total: number;
   error: string | null;
+  model: 'en' | 'zh' | null;
+  models: { id: 'en' | 'zh'; downloaded: boolean }[];
 }
 
 export function getSetup(): Promise<{ features: SetupFeature[] }> {
@@ -98,8 +100,22 @@ export function setTtsEnabled(enabled: boolean): Promise<SetupFeature> {
   return request('/api/v1/setup/tts.json', { method: 'PUT', body: JSON.stringify({ enabled }) });
 }
 
+export function setTtsModel(model: 'en' | 'zh'): Promise<SetupFeature> {
+  return request('/api/v1/setup/tts.json', { method: 'PUT', body: JSON.stringify({ model }) });
+}
+
+const TEST_INPUT: Record<'en' | 'zh', string> = {
+  en: 'Hello from AI Companion.',
+  zh: '你好，这是一段本地语音测试。',
+};
+
+/** The sentence Test sends for the loaded checkpoint. */
+export function testSpeechText(model: 'en' | 'zh' | null = null): string {
+  return TEST_INPUT[model === 'zh' ? 'zh' : 'en'];
+}
+
 /** Plays through the speech endpoint the same way another app on this machine would. */
-export async function testSpeech(): Promise<Blob> {
+export async function testSpeech(model: 'en' | 'zh' | null = null): Promise<Blob> {
   const headers = new Headers({ 'content-type': 'application/json' });
   if (token !== '') headers.set('Authorization', `Bearer ${token}`);
   const res = await fetch('/api/v1/audio/speech', {
@@ -107,7 +123,7 @@ export async function testSpeech(): Promise<Blob> {
     headers,
     body: JSON.stringify({
       model: 'kokoro-82m',
-      input: 'Hello from AI Companion.',
+      input: testSpeechText(model),
       voice: 'default',
       response_format: 'wav',
     }),

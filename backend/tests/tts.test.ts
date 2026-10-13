@@ -5,7 +5,7 @@
 import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { createApp } from '../src/app';
 import { ConnectionManager } from '../src/manager';
@@ -13,8 +13,8 @@ import { ConnectionStore } from '../src/store';
 import { setConfigTtsEnabled, setConfigToken } from '../src/token';
 import { downloadVerified } from '../src/tts/download';
 import { buildTtsArgs } from '../src/tts/engine';
-import { engineDir, mlxDir, modelDir, usesMlxEngine } from '../src/tts/layout';
-import { buildMlxArgs, mlxRunner } from '../src/tts/mlx';
+import { engineDir, modelDir, modelMarker, pythonBin, pythonDir, usesMlxEngine } from '../src/tts/layout';
+import { speechLang } from '../src/tts/models';
 import { parseSpeechRequest } from '../src/tts/parse';
 import { TtsQueue, type SpeechResult, type SpeechRunner } from '../src/tts/queue';
 import { TtsSetup } from '../src/tts/setup';
@@ -72,12 +72,11 @@ function writeText(bytes: Uint8Array, offset: number, text: string): void {
 /** Empty stand-ins for the files the readiness check looks for. */
 function installFakeKokoro(root: string): void {
   if (usesMlxEngine()) {
-    const dir = mlxDir(root);
-    mkdirSync(join(dir, 'voices'), { recursive: true });
-    writeFileSync(join(dir, 'config.json'), '{}');
-    writeFileSync(join(dir, 'kokoro-v1_0.safetensors'), '');
-    writeFileSync(join(dir, 'voices', 'af_heart.npy'), '');
-    writeFileSync(join(dir, 'KokoroCLI'), '');
+    mkdirSync(dirname(modelMarker(root, 'en')), { recursive: true });
+    writeFileSync(modelMarker(root, 'en'), 'mlx-community/Kokoro-82M-bf16\n');
+    mkdirSync(dirname(pythonBin(root)), { recursive: true });
+    writeFileSync(pythonBin(root), '');
+    writeFileSync(join(pythonDir(root), 'python.ready'), 'ok\n');
     return;
   }
   const model = modelDir(root);
@@ -181,36 +180,23 @@ describe('buildTtsArgs', () => {
   });
 });
 
-describe('buildMlxArgs', () => {
-  test('passes OpenAI speed through and uses British English for bm_', () => {
-    const job = parseSpeechRequest({ model: 'kokoro-82m', input: 'Hello', voice: 'fable', speed: 1.1 });
-    expect(buildMlxArgs('/weights', job, '/tmp/speech.wav')).toEqual([
-      '--text', 'Hello',
-      '--voice', 'bm_fable',
-      '--output', '/tmp/speech.wav',
-      '--weights-dir', '/weights',
-      '--backend', 'mlx',
-      '--speed', '1.1',
-      '--lang-code', 'en-gb',
-    ]);
+describe('speech model selection', () => {
+  test('English default voice is af_heart and British voices use lang b', () => {
+    const job = parseSpeechRequest({ model: 'kokoro-82m', input: 'Hello', voice: 'default' }, 'en');
+    expect(job.voice).toEqual({ id: 'af_heart', sid: 3 });
+    expect(speechLang('en', job.voice.id)).toBe('a');
+    const british = parseSpeechRequest({ model: 'kokoro-82m', input: 'Hello', voice: 'fable' }, 'en');
+    expect(british.voice.id).toBe('bm_fable');
+    expect(speechLang('en', british.voice.id)).toBe('b');
   });
 
-  test('default voice stays American English', () => {
-    const job = parseSpeechRequest({ model: 'kokoro-82m', input: 'Hello', voice: 'default', speed: 1.5 });
-    const args = buildMlxArgs('/weights', job, '/tmp/speech.wav');
-    expect(args[args.indexOf('--voice') + 1]).toBe('af_heart');
-    expect(args[args.indexOf('--speed') + 1]).toBe('1.5');
-    expect(args[args.indexOf('--lang-code') + 1]).toBe('en-us');
-  });
-
-  test('a voice with no npy file is a 400 before the process starts', async () => {
-    const root = tempDir();
-    const dir = mlxDir(root);
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, 'KokoroCLI'), '');
-    const runner = mlxRunner(async () => ({ bin: join(dir, 'KokoroCLI'), libDirs: [] }), () => dir);
-    const job = parseSpeechRequest({ model: 'kokoro-82m', input: 'Hi', voice: 'default' });
-    await expect(runner.run(job)).rejects.toMatchObject({ status: 400, code: 'INVALID_PARAM' });
+  test('Chinese default voice is zf_001 and a pack id is accepted', () => {
+    const job = parseSpeechRequest({ model: 'kokoro-82m', input: '你好', voice: 'default' }, 'zh');
+    expect(job.voice).toEqual({ id: 'zf_001', sid: 0 });
+    expect(speechLang('zh', job.voice.id)).toBe('z');
+    const named = parseSpeechRequest({ model: 'kokoro-82m', input: '你好', voice: 'zf_026' }, 'zh');
+    expect(named.voice.id).toBe('zf_026');
+    expect(() => parseSpeechRequest({ model: 'kokoro-82m', input: '你好', voice: 'shimmer' }, 'zh')).toThrow(/voice/);
   });
 });
 
@@ -291,11 +277,15 @@ describe('speech routes', () => {
     expect(jobs[0]?.voice.sid).toBe(3);
   });
 
-  test('a token change keeps the speech switch', () => {
+  test('a token change keeps the speech switch and the selected model', () => {
     const root = tempDir();
-    writeFileSync(join(root, 'config.json'), JSON.stringify({ token: 'old', port: 38000, ttsEnabled: true }));
+    writeFileSync(
+      join(root, 'config.json'),
+      JSON.stringify({ token: 'old', port: 38000, ttsEnabled: true, ttsModel: 'zh' }),
+    );
     const after = setConfigToken(root, 'new');
     expect(after.ttsEnabled).toBe(true);
+    expect(after.ttsModel).toBe('zh');
     expect(after.token).toBe('new');
   });
 });

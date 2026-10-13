@@ -44,5 +44,8 @@ export const UV_ASSET: ArchiveAsset = {
   filename: 'uv-aarch64-apple-darwin.tar.gz',
 };
 
+/** Pinned speech packages. English G2P needs the en extra, the spaCy model, and zh. */
 export const MLX_AUDIO_SPEC = 'mlx-audio==0.5.8';
-export const MISAKI_SPEC = 'misaki[zh]==0.9.4';
+export const MISAKI_SPEC = 'misaki[en,zh]==0.9.4';
+export const SPACY_MODEL_SPEC =
+  'https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl';

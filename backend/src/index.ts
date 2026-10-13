@@ -105,7 +105,7 @@ setInterval(() => {
 
 const speech = createSpeech(root);
 console.log(
-  `[companion] speech ${config.ttsEnabled ? 'enabled' : 'off'} (${usesMlxEngine() ? 'mlx' : 'sherpa'}; model downloads from the Setup page)`,
+  `[companion] speech ${config.ttsEnabled ? 'enabled' : 'off'} (${usesMlxEngine() ? `mlx ${config.ttsModel ?? 'en'}` : 'sherpa'}; model downloads from the Setup page)`,
 );
 
 const app = createApp({
