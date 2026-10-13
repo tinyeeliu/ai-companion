@@ -89,6 +89,9 @@ export function parseSpeechRequest(body: Record<string, unknown>, loaded: TtsMod
     throw new HttpError(400, 'INVALID_PARAM', 'stream_format must be audio or speaker');
   }
   const speaker = body.stream_format === 'speaker';
+  if (voice.osName != null && !speaker) {
+    throw new HttpError(400, 'INVALID_PARAM', 'an os/ voice requires stream_format speaker');
+  }
 
   return { input, voice, speed, format: speaker ? 'wav' : format, speaker };
 }

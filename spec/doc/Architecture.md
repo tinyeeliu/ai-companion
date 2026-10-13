@@ -226,7 +226,7 @@ OpenAI SDK cannot be pointed here unchanged, because the path is not
 | --- | --- |
 | `model` | Must be `kokoro-82m` |
 | `input` | Required, 1–4096 characters |
-| `voice` | `"default"` is the Setup selection's voice: `af_heart` (speaker 3) for English and for Windows, `zf_001` for Chinese. A Kokoro id is spoken by the checkpoint that contains that file, so `af_heart` uses the English checkpoint even while Setup has Chinese selected. The selection in `config.json` is not changed. `alloy`, `echo`, `fable`, `onyx`, and `nova` map to English speakers. `os/<name>` is a voice from `say` or Windows SAPI and does not require Kokoro to be downloaded or enabled. A voice that is not installed is `400`. A named voice whose checkpoint is not downloaded is `503` |
+| `voice` | `"default"` is the Setup selection's voice: `af_heart` (speaker 3) for English and for Windows, `zf_001` for Chinese. A Kokoro id is spoken by the checkpoint that contains that file, so `af_heart` uses the English checkpoint even while Setup has Chinese selected. The selection in `config.json` is not changed. `alloy`, `echo`, `fable`, `onyx`, and `nova` map to English speakers. `os/<name>` is a voice from `say` or Windows SAPI. It does not require Kokoro to be downloaded or enabled, and it is accepted only with `stream_format` `speaker`. A voice that is not installed is `400`. A named voice whose checkpoint is not downloaded is `503` |
 | `response_format` | `wav` (default) or `pcm` (signed 16-bit little-endian, 24 kHz, mono). `mp3`, `opus`, `aac`, `flac` are `400` |
 | `speed` | `0.25`–`4.0`, default `1`. On Apple Silicon this number is passed to mlx-audio. On Windows, sherpa's Kokoro length scale is `1/speed` (a larger OpenAI speed is faster) |
 | `instructions` | Accepted and ignored. Kokoro has no style prompt |
@@ -255,8 +255,9 @@ own queue, so a FLUX job does not hold up a sentence. A full queue is
 `language_codes`, `gender` (`MALE`, `FEMALE`, or `NEUTRAL`), and `vendor`
 (`kokoro` or `os`). Kokoro rows are the voice files of checkpoints already on
 disk (`af_heart` becomes name `Heart`). OS rows are always present; their id is
-`os/` plus the platform voice name (`os/Tingting`). That id is what `voice`
-accepts on the speech route.
+`os/` plus the platform voice name (`os/Tingting` for Mandarin, `os/Sinji` for
+Cantonese on Mac). That id is what `voice` accepts on the speech route, and
+only when `stream_format` is `speaker`.
 
 ## REST
 

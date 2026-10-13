@@ -370,9 +370,14 @@ describe('voice catalog', () => {
     ]);
   });
 
-  test('an os/ voice is accepted and does not require Kokoro', () => {
-    const job = parseSpeechRequest({ model: 'kokoro-82m', input: 'Hello', voice: 'os/Tingting' }, 'zh');
+  test('an os/ voice is accepted only for speaker playback', () => {
+    const job = parseSpeechRequest(
+      { model: 'kokoro-82m', input: 'Hello', voice: 'os/Tingting', stream_format: 'speaker' },
+      'zh',
+    );
     expect(job.voice).toEqual({ id: 'os/Tingting', sid: 0, osName: 'Tingting' });
+    expect(job.speaker).toBe(true);
+    expect(() => parseSpeechRequest({ model: 'kokoro-82m', input: 'Hello', voice: 'os/Tingting' })).toThrow(/speaker/);
     expect(() => parseSpeechRequest({ model: 'kokoro-82m', input: 'Hello', voice: 'os/' })).toThrow(/voice/);
     expect(() => parseSpeechRequest({ model: 'kokoro-82m', input: 'Hello', voice: 'os/a/b' })).toThrow(/voice/);
   });
@@ -400,17 +405,26 @@ describe('voice catalog', () => {
     }
   });
 
-  test('an installed OS voice speaks without Kokoro', async () => {
+  test('an installed OS voice plays on the speaker without Kokoro', async () => {
     if (process.platform !== 'darwin') return;
     const root = tempDir();
-    const { app } = appWith(root, okRunner());
-    const res = await app.request('/api/v1/audio/speech', {
+    const played: Uint8Array[] = [];
+    const { app } = appWith(root, okRunner(), async (wav) => {
+      played.push(wav);
+    });
+    const refused = await app.request('/api/v1/audio/speech', {
       method: 'POST',
       headers: authHeaders(),
       body: JSON.stringify({ model: 'kokoro-82m', input: 'Hello.', voice: 'os/Tingting' }),
     });
-    expect(res.status).toBe(200);
-    expect(res.headers.get('content-type')).toBe('audio/wav');
-    expect((await res.arrayBuffer()).byteLength).toBeGreaterThan(44);
+    expect(refused.status).toBe(400);
+
+    const res = await app.request('/api/v1/audio/speech', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ model: 'kokoro-82m', input: 'Hello.', voice: 'os/Tingting', stream_format: 'speaker' }),
+    });
+    expect(res.status).toBe(204);
+    expect((played[0]?.byteLength ?? 0)).toBeGreaterThan(44);
   });
 });
