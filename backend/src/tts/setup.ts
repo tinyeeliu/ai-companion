@@ -77,6 +77,10 @@ export class TtsSetup {
     return configTtsModel(this.root);
   }
 
+  dataRoot(): string {
+    return this.root;
+  }
+
   async downloaded(): Promise<boolean> {
     if (usesMlxEngine()) return pythonReady(this.root) && mlxModelReady(this.root, this.model());
     return modelReady(this.root) && (await findEngineBinary(this.root)) != null;

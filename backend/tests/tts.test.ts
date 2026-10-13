@@ -13,7 +13,9 @@ import { ConnectionStore } from '../src/store';
 import { setConfigTtsEnabled, setConfigToken } from '../src/token';
 import { downloadVerified } from '../src/tts/download';
 import { buildTtsArgs } from '../src/tts/engine';
-import { engineDir, modelDir, modelMarker, pythonBin, pythonDir, usesMlxEngine } from '../src/tts/layout';
+import { kokoroVoice } from '../src/tts/catalog';
+import { engineDir, mlxHubDir, modelDir, modelMarker, pythonBin, pythonDir, usesMlxEngine } from '../src/tts/layout';
+import { parseSapiListing, parseSayListing } from '../src/tts/os';
 import { speechLang } from '../src/tts/models';
 import { parseSpeechRequest } from '../src/tts/parse';
 import { TtsQueue, type SpeechResult, type SpeechRunner } from '../src/tts/queue';
@@ -287,5 +289,78 @@ describe('speech routes', () => {
     expect(after.ttsEnabled).toBe(true);
     expect(after.ttsModel).toBe('zh');
     expect(after.token).toBe('new');
+  });
+});
+
+describe('voice catalog', () => {
+  test('Kokoro ids carry a display name, locale, and gender', () => {
+    expect(kokoroVoice('af_heart')).toEqual({
+      id: 'af_heart',
+      name: 'Heart',
+      language_codes: ['en-US'],
+      gender: 'FEMALE',
+      vendor: 'kokoro',
+    });
+    expect(kokoroVoice('bm_fable')).toMatchObject({ name: 'Fable', language_codes: ['en-GB'], gender: 'MALE' });
+    expect(kokoroVoice('zf_001')).toMatchObject({ name: 'zf_001', language_codes: ['zh-CN'], gender: 'FEMALE' });
+  });
+
+  test('say and SAPI listings become os/ voices', () => {
+    const say = parseSayListing([
+      'Tingting            zh_CN    # 你好！我叫婷婷。',
+      'Eddy (Chinese (China mainland)) zh_CN    # 你好！我叫Eddy。',
+      'Bad/Name            en_US    # skipped',
+    ].join('\n'));
+    expect(say).toEqual([
+      { name: 'Tingting', language: 'zh-CN', gender: 'NEUTRAL' },
+      { name: 'Eddy (Chinese (China mainland))', language: 'zh-CN', gender: 'NEUTRAL' },
+    ]);
+    expect(parseSapiListing('Microsoft Zira Desktop\ten-US\tFemale\nWeird/Name\ten-US\tMale')).toEqual([
+      { name: 'Microsoft Zira Desktop', language: 'en-US', gender: 'FEMALE' },
+    ]);
+  });
+
+  test('an os/ voice is accepted and does not require Kokoro', () => {
+    const job = parseSpeechRequest({ model: 'kokoro-82m', input: 'Hello', voice: 'os/Tingting' }, 'zh');
+    expect(job.voice).toEqual({ id: 'os/Tingting', sid: 0, osName: 'Tingting' });
+    expect(() => parseSpeechRequest({ model: 'kokoro-82m', input: 'Hello', voice: 'os/' })).toThrow(/voice/);
+    expect(() => parseSpeechRequest({ model: 'kokoro-82m', input: 'Hello', voice: 'os/a/b' })).toThrow(/voice/);
+  });
+
+  test('lists downloaded Kokoro voices and the OS voices', async () => {
+    const root = tempDir();
+    const voices = join(mlxHubDir(root), 'models--mlx-community--Kokoro-82M-bf16', 'snapshots', 'test', 'voices');
+    mkdirSync(voices, { recursive: true });
+    writeFileSync(join(voices, 'af_heart.safetensors'), '');
+    writeFileSync(join(voices, 'af_heart.pt'), '');
+    const { app } = appWith(root, okRunner());
+    const res = await app.request('/api/v1/voices.json', { headers: { authorization: `Bearer ${TOKEN}` } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { voices: { id: string; vendor: string; name: string }[] };
+    expect(body.voices.find((voice) => voice.id === 'af_heart')).toMatchObject({
+      name: 'Heart',
+      vendor: 'kokoro',
+    });
+    expect(body.voices.some((voice) => voice.id === 'af_heart.pt' || voice.vendor === 'kokoro' && voice.id.endsWith('.pt'))).toBe(false);
+    if (process.platform === 'darwin' || process.platform === 'win32') {
+      expect(body.voices.some((voice) => voice.vendor === 'os' && voice.id.startsWith('os/'))).toBe(true);
+    }
+    if (process.platform === 'darwin') {
+      expect(body.voices.some((voice) => voice.id === 'os/Tingting')).toBe(true);
+    }
+  });
+
+  test('an installed OS voice speaks without Kokoro', async () => {
+    if (process.platform !== 'darwin') return;
+    const root = tempDir();
+    const { app } = appWith(root, okRunner());
+    const res = await app.request('/api/v1/audio/speech', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ model: 'kokoro-82m', input: 'Hello.', voice: 'os/Tingting' }),
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('audio/wav');
+    expect((await res.arrayBuffer()).byteLength).toBeGreaterThan(44);
   });
 });

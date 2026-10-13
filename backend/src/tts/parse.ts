@@ -56,7 +56,7 @@ export function parseSpeechRequest(body: Record<string, unknown>, loaded: TtsMod
     throw new HttpError(
       400,
       'INVALID_PARAM',
-      'voice must be "default", a Kokoro voice id, or alloy, echo, fable, onyx, nova',
+      'voice must be "default", a Kokoro voice id, an os/ voice, or alloy, echo, fable, onyx, nova',
     );
   }
 
@@ -91,6 +91,8 @@ export function parseSpeechRequest(body: Record<string, unknown>, loaded: TtsMod
 }
 
 function resolveLoadedVoice(name: string, loaded: TtsModelId | null): ResolvedVoice | null {
+  const os = osVoice(name);
+  if (name.trim().startsWith('os/')) return os;
   if (loaded === 'zh') {
     const trimmed = name.trim();
     const id = trimmed === 'default' ? TTS_MODELS.zh.voice : trimmed;
@@ -98,6 +100,12 @@ function resolveLoadedVoice(name: string, loaded: TtsModelId | null): ResolvedVo
     return { id, sid: 0 };
   }
   return resolveVoice(name);
+}
+
+function osVoice(name: string): ResolvedVoice | null {
+  const osName = name.trim().slice(3).trim();
+  if (osName === '' || osName.includes('/')) return null;
+  return { id: `os/${osName}`, sid: 0, osName };
 }
 
 function voiceNameOf(voice: unknown): string | null {

@@ -7,6 +7,8 @@
 import type { Hono } from 'hono';
 import { HttpError } from '../types';
 import { TtsFailedError, TtsTimeoutError } from './engine';
+import { listVoices } from './catalog';
+import { speakOs } from './os';
 import { parseSpeechRequest } from './parse';
 import { usesMlxEngine } from './layout';
 import { TtsQueueFullError, type SpeechResult, type TtsQueue } from './queue';
@@ -20,15 +22,23 @@ export interface TtsRoutesOptions {
 export function registerTtsRoutes(app: Hono, options: TtsRoutesOptions): void {
   const { queue, setup } = options;
 
+  app.get('/api/v1/voices.json', async (c) => {
+    return c.json({ voices: await listVoices(setup.dataRoot()) });
+  });
+
   app.post('/api/v1/audio/speech', async (c) => {
+    const body = await readJson(c);
+    const job = parseSpeechRequest(body, usesMlxEngine() ? setup.model() : null);
+    if (job.voice.osName != null) {
+      const result = await speakMapped(job);
+      return c.body(new Uint8Array(result.audio), 200, { 'content-type': result.contentType });
+    }
     if (!(await setup.downloaded())) {
       throw new HttpError(503, 'TTS_NOT_READY', 'Speech model is not downloaded');
     }
     if (!setup.enabled()) {
       throw new HttpError(503, 'TTS_DISABLED', 'Speech is turned off');
     }
-    const body = await readJson(c);
-    const job = parseSpeechRequest(body, usesMlxEngine() ? setup.model() : null);
     const result = await submit(queue, job);
     return c.body(new Uint8Array(result.audio), 200, { 'content-type': result.contentType });
   });
@@ -57,16 +67,28 @@ export function registerTtsRoutes(app: Hono, options: TtsRoutesOptions): void {
   });
 }
 
+async function speakMapped(job: ReturnType<typeof parseSpeechRequest>): Promise<SpeechResult> {
+  try {
+    return await speakOs(job);
+  } catch (error) {
+    throw mapSpeechError(error);
+  }
+}
+
 async function submit(queue: TtsQueue, job: ReturnType<typeof parseSpeechRequest>): Promise<SpeechResult> {
   try {
     return await queue.submit(job);
   } catch (error) {
-    if (error instanceof TtsQueueFullError) throw new HttpError(503, 'QUEUE_FULL', error.message);
-    if (error instanceof TtsTimeoutError) throw new HttpError(504, 'TTS_TIMEOUT', error.message);
-    if (error instanceof TtsFailedError) throw new HttpError(500, 'TTS_FAILED', error.message);
-    if (error instanceof HttpError) throw error;
-    throw new HttpError(500, 'TTS_FAILED', error instanceof Error ? error.message : String(error));
+    throw mapSpeechError(error);
   }
+}
+
+function mapSpeechError(error: unknown): HttpError {
+  if (error instanceof TtsQueueFullError) return new HttpError(503, 'QUEUE_FULL', error.message);
+  if (error instanceof TtsTimeoutError) return new HttpError(504, 'TTS_TIMEOUT', error.message);
+  if (error instanceof TtsFailedError) return new HttpError(500, 'TTS_FAILED', error.message);
+  if (error instanceof HttpError) return error;
+  return new HttpError(500, 'TTS_FAILED', error instanceof Error ? error.message : String(error));
 }
 
 async function readJson(c: { req: { json: () => Promise<unknown> } }): Promise<Record<string, unknown>> {

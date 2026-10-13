@@ -225,7 +225,7 @@ OpenAI SDK cannot be pointed here unchanged, because the path is not
 | --- | --- |
 | `model` | Must be `kokoro-82m` |
 | `input` | Required, 1–4096 characters |
-| `voice` | `"default"` is the loaded checkpoint's own voice: `af_heart` (speaker 3) for English and for Windows, `zf_001` for the Chinese checkpoint. A Kokoro id, or `alloy`, `echo`, `fable`, `onyx`, `nova`, on the English and Windows engines. On the Chinese checkpoint a voice id is `xx_name`. A voice that is not in the loaded pack is `400` |
+| `voice` | `"default"` is the loaded checkpoint's own voice: `af_heart` (speaker 3) for English and for Windows, `zf_001` for the Chinese checkpoint. A Kokoro id, or `alloy`, `echo`, `fable`, `onyx`, `nova`, on the English and Windows engines. On the Chinese checkpoint a voice id is `xx_name`. `os/<name>` is a voice from `say` or Windows SAPI and does not require Kokoro to be downloaded or enabled. A voice that is not installed is `400` |
 | `response_format` | `wav` (default) or `pcm` (signed 16-bit little-endian, 24 kHz, mono). `mp3`, `opus`, `aac`, `flac` are `400` |
 | `speed` | `0.25`–`4.0`, default `1`. On Apple Silicon this number is passed to mlx-audio. On Windows, sherpa's Kokoro length scale is `1/speed` (a larger OpenAI speed is faster) |
 | `instructions` | Accepted and ignored. Kokoro has no style prompt |
@@ -249,6 +249,13 @@ for this machine and the selected checkpoint are present the route answers
 own queue, so a FLUX job does not hold up a sentence. A full queue is
 `503 QUEUE_FULL`. A wedged child is killed and the caller gets
 `504 TTS_TIMEOUT`. A non-zero exit is `500 TTS_FAILED`.
+
+`GET /api/v1/voices.json` lists `{ voices: [...] }`. Each entry is `id`, `name`,
+`language_codes`, `gender` (`MALE`, `FEMALE`, or `NEUTRAL`), and `vendor`
+(`kokoro` or `os`). Kokoro rows are the voice files of checkpoints already on
+disk (`af_heart` becomes name `Heart`). OS rows are always present; their id is
+`os/` plus the platform voice name (`os/Tingting`). That id is what `voice`
+accepts on the speech route.
 
 ## REST
 
@@ -278,6 +285,7 @@ Auth column: `loopback` means a caller on this machine needs no token; every oth
 | POST | `/api/v1/image/generations.json` | loopback |
 | GET | `/api/v1/image/generations/:id.png` | loopback |
 | POST | `/api/v1/audio/speech` | loopback |
+| GET | `/api/v1/voices.json` | loopback |
 | GET | `/api/v1/setup.json` | loopback |
 | POST | `/api/v1/setup/tts/download.json` | loopback |
 | PUT | `/api/v1/setup/tts.json` | loopback |

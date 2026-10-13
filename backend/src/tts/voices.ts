@@ -19,6 +19,11 @@ const SPEAKERS = [
 
 export const DEFAULT_VOICE_ID = 'af_heart';
 
+/** Speaker ids in the Windows sherpa pack. One file holds every voice. */
+export function sherpaVoiceIds(): readonly string[] {
+  return SPEAKERS;
+}
+
 /** OpenAI voice names that already exist as Kokoro speakers. The rest are rejected. */
 const OPENAI_VOICES: Record<string, string> = {
   alloy: 'af_alloy',
@@ -33,6 +38,8 @@ const SID = new Map<string, number>(SPEAKERS.map((id, sid) => [id, sid]));
 export interface ResolvedVoice {
   id: string;
   sid: number;
+  /** Set for `os/<platform name>`. Kokoro is not used. */
+  osName?: string;
 }
 
 /**
