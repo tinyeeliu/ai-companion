@@ -3,6 +3,7 @@
  *
  * `POST /api/v1/audio/speech` returns audio bytes. The setup routes stay JSON
  * so the page can download and enable the model without speaking.
+ * `GET /api/v1/setup.json` is mounted by the app so speech and decision share one list.
  */
 import type { Hono } from 'hono';
 import { HttpError } from '../types';
@@ -43,10 +44,6 @@ export function registerTtsRoutes(app: Hono, options: TtsRoutesOptions): void {
       throw new HttpError(503, 'TTS_DISABLED', 'Speech is turned off');
     }
     return respond(c, job, await submit(queue, job), play);
-  });
-
-  app.get('/api/v1/setup.json', async (c) => {
-    return c.json({ features: [await setup.view()] });
   });
 
   app.post('/api/v1/setup/tts/download.json', async (c) => {

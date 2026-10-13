@@ -76,32 +76,76 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return body as T;
 }
 
-export interface SetupFeature {
-  id: string;
+interface SetupFeatureBase {
   downloaded: boolean;
   enabled: boolean;
   downloading: boolean;
   received: number;
   total: number;
   error: string | null;
+}
+
+export interface TtsSetupFeature extends SetupFeatureBase {
+  id: 'tts';
   model: 'en' | 'zh' | null;
   models: { id: 'en' | 'zh'; downloaded: boolean }[];
 }
+
+export interface DecisionSetupFeature extends SetupFeatureBase {
+  id: 'decision';
+  model: 'laya-multilingual' | null;
+  models: { id: 'laya-multilingual'; downloaded: boolean }[];
+}
+
+export type SetupFeature = TtsSetupFeature | DecisionSetupFeature;
 
 export function getSetup(): Promise<{ features: SetupFeature[] }> {
   return request('/api/v1/setup.json');
 }
 
-export function downloadTts(): Promise<SetupFeature> {
+export function downloadTts(): Promise<TtsSetupFeature> {
   return request('/api/v1/setup/tts/download.json', { method: 'POST' });
 }
 
-export function setTtsEnabled(enabled: boolean): Promise<SetupFeature> {
+export function setTtsEnabled(enabled: boolean): Promise<TtsSetupFeature> {
   return request('/api/v1/setup/tts.json', { method: 'PUT', body: JSON.stringify({ enabled }) });
 }
 
-export function setTtsModel(model: 'en' | 'zh'): Promise<SetupFeature> {
+export function setTtsModel(model: 'en' | 'zh'): Promise<TtsSetupFeature> {
   return request('/api/v1/setup/tts.json', { method: 'PUT', body: JSON.stringify({ model }) });
+}
+
+export function downloadDecision(): Promise<DecisionSetupFeature> {
+  return request('/api/v1/setup/decision/download.json', { method: 'POST' });
+}
+
+export function setDecisionEnabled(enabled: boolean): Promise<DecisionSetupFeature> {
+  return request('/api/v1/setup/decision.json', { method: 'PUT', body: JSON.stringify({ enabled }) });
+}
+
+const TEST_DECISION = {
+  state: 'The customer wrote: 我的订单到了但是盒子是破的。',
+  questions: {
+    team: {
+      type: 'choice',
+      instructions: 'Which team should handle this?',
+      criteria: {
+        returns: 'Damaged or missing goods',
+        billing: 'Payments and invoices',
+        other: 'Anything else',
+      },
+    },
+  },
+};
+
+export interface DecisionAnswer {
+  type?: string;
+  choice?: string;
+}
+
+/** One short multilingual choice, the same call the Test button makes. */
+export function testDecision(): Promise<{ answers: Record<string, DecisionAnswer> }> {
+  return request('/api/v1/systemone.json', { method: 'POST', body: JSON.stringify(TEST_DECISION) });
 }
 
 const TEST_INPUT: Record<'en' | 'zh', string> = {

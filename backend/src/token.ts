@@ -52,6 +52,11 @@ export function configTtsModel(root: string): 'en' | 'zh' {
   return readConfig(root)?.ttsModel === 'zh' ? 'zh' : 'en';
 }
 
+/** Decision stays off until Setup turns it on. A missing field is off. */
+export function configDecisionEnabled(root: string): boolean {
+  return readConfig(root)?.decisionEnabled === true;
+}
+
 export function loadOrCreateConfig(root: string, port: number = DEFAULT_PORT): AppConfig {
   ensureDir(root);
   const file = configPath(root);
@@ -64,6 +69,7 @@ export function loadOrCreateConfig(root: string, port: number = DEFAULT_PORT): A
         modelsDir: configModelsDir(root),
         ttsEnabled: parsed.ttsEnabled === true,
         ttsModel: parsed.ttsModel === 'zh' ? 'zh' : 'en',
+        decisionEnabled: parsed.decisionEnabled === true,
       };
       if (cfg.port !== port) {
         cfg.port = port;
@@ -72,7 +78,14 @@ export function loadOrCreateConfig(root: string, port: number = DEFAULT_PORT): A
       return cfg;
     }
   }
-  const cfg: AppConfig = { token: newToken(), port, modelsDir: null, ttsEnabled: false, ttsModel: 'en' };
+  const cfg: AppConfig = {
+    token: newToken(),
+    port,
+    modelsDir: null,
+    ttsEnabled: false,
+    ttsModel: 'en',
+    decisionEnabled: false,
+  };
   writeConfig(root, cfg);
   return cfg;
 }
@@ -101,6 +114,7 @@ export function setConfigToken(root: string, token: string): AppConfig {
     modelsDir: configModelsDir(root),
     ttsEnabled: configTtsEnabled(root),
     ttsModel: configTtsModel(root),
+    decisionEnabled: configDecisionEnabled(root),
   };
   writeConfig(root, cfg);
   return cfg;
@@ -131,6 +145,7 @@ export function setConfigTtsEnabled(root: string, enabled: boolean): AppConfig {
     modelsDir: configModelsDir(root),
     ttsEnabled: enabled,
     ttsModel: configTtsModel(root),
+    decisionEnabled: configDecisionEnabled(root),
   };
   writeConfig(root, cfg);
   return cfg;
@@ -158,6 +173,38 @@ export function setConfigTtsModel(root: string, model: 'en' | 'zh'): AppConfig {
     modelsDir: configModelsDir(root),
     ttsEnabled: configTtsEnabled(root),
     ttsModel: model,
+    decisionEnabled: configDecisionEnabled(root),
+  };
+  writeConfig(root, cfg);
+  return cfg;
+}
+
+/**
+ * Persist the Setup page's decision switch. The token, port, models directory,
+ * and speech settings stay as they are.
+ */
+export function setConfigDecisionEnabled(root: string, enabled: boolean): AppConfig {
+  ensureDir(root);
+  const file = configPath(root);
+  let token = '';
+  let port = DEFAULT_PORT;
+  if (existsSync(file)) {
+    try {
+      const parsed = JSON.parse(readFileSync(file, 'utf8')) as Partial<AppConfig>;
+      if (typeof parsed.token === 'string') token = parsed.token;
+      if (typeof parsed.port === 'number') port = parsed.port;
+    } catch {
+      /* unreadable config: keep the defaults and still record the switch */
+    }
+  }
+  if (token === '') token = newToken();
+  const cfg: AppConfig = {
+    token,
+    port,
+    modelsDir: configModelsDir(root),
+    ttsEnabled: configTtsEnabled(root),
+    ttsModel: configTtsModel(root),
+    decisionEnabled: enabled,
   };
   writeConfig(root, cfg);
   return cfg;

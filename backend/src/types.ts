@@ -192,6 +192,11 @@ export interface AppConfig {
    * so an old config.json keeps the voice it already had.
    */
   ttsModel?: 'en' | 'zh';
+  /**
+   * Local decision is served only when this is true AND the laya-multilingual
+   * files are on disk. Absent means off, so an old config.json does not load it.
+   */
+  decisionEnabled?: boolean;
 }
 
 export interface InboundText {

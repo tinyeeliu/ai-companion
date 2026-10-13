@@ -1,38 +1,68 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
-  import { downloadTts, getSetup, setTtsEnabled, setTtsModel, testSpeech, testSpeechText, type SetupFeature } from './api';
+  import {
+    downloadDecision,
+    downloadTts,
+    getSetup,
+    setDecisionEnabled,
+    setTtsEnabled,
+    setTtsModel,
+    testDecision,
+    testSpeech,
+    testSpeechText,
+    type DecisionSetupFeature,
+    type TtsSetupFeature,
+  } from './api';
   import { t, tr as translate } from './i18n';
 
   /**
-   * Setup is a list of local features. Speech is the first card: download the
-   * model, turn it on, then play a short sample through the speech endpoint.
+   * Setup is a list of local features. Speech is the first card. Decision is
+   * the second: download the model, turn it on, then ask one short question.
    */
-  let feature = $state<SetupFeature | null>(null);
-  let error = $state('');
-  let note = $state('');
+  let speech = $state<TtsSetupFeature | null>(null);
+  let decision = $state<DecisionSetupFeature | null>(null);
+  let loadError = $state('');
+  let speechError = $state('');
+  let decisionError = $state('');
+  let speechNote = $state('');
+  let decisionNote = $state('');
   let spoken = $state('');
-  let testing = $state(false);
+  let chosen = $state('');
+  let testingSpeech = $state(false);
+  let testingDecision = $state(false);
   let audioUrl = '';
   let timer: ReturnType<typeof setInterval> | undefined;
 
-  function apply(next: SetupFeature): void {
-    feature = next;
-    if (next.error != null && next.error !== '') error = next.error;
-    if (next.downloading) startPolling();
-    else stopPolling();
+  function applySpeech(next: TtsSetupFeature): void {
+    speech = next;
+    if (next.error != null && next.error !== '') speechError = next.error;
+    syncPolling();
+  }
+
+  function applyDecision(next: DecisionSetupFeature): void {
+    decision = next;
+    if (next.error != null && next.error !== '') decisionError = next.error;
+    syncPolling();
   }
 
   async function load(): Promise<void> {
     const body = await getSetup();
-    const tts = body.features.find((item) => item.id === 'tts');
-    if (tts != null) apply(tts);
+    const tts = body.features.find((item): item is TtsSetupFeature => item.id === 'tts');
+    const next = body.features.find((item): item is DecisionSetupFeature => item.id === 'decision');
+    if (tts != null) applySpeech(tts);
+    if (next != null) applyDecision(next);
+  }
+
+  function syncPolling(): void {
+    if (speech?.downloading || decision?.downloading) startPolling();
+    else stopPolling();
   }
 
   function startPolling(): void {
     if (timer != null) return;
     timer = setInterval(() => {
       void load().catch((err: unknown) => {
-        error = err instanceof Error ? err.message : String(err);
+        loadError = err instanceof Error ? err.message : String(err);
       });
     }, 500);
   }
@@ -45,7 +75,7 @@
 
   onMount(() => {
     void load().catch((err: unknown) => {
-      error = err instanceof Error ? err.message : String(err);
+      loadError = err instanceof Error ? err.message : String(err);
     });
   });
 
@@ -56,64 +86,112 @@
 
   async function choose(model: string): Promise<void> {
     if (model !== 'en' && model !== 'zh') return;
-    error = '';
-    note = '';
+    speechError = '';
+    speechNote = '';
     spoken = '';
     try {
-      apply(await setTtsModel(model));
+      applySpeech(await setTtsModel(model));
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err);
+      speechError = err instanceof Error ? err.message : String(err);
     }
   }
 
-  async function download(): Promise<void> {
-    error = '';
-    note = '';
+  async function downloadSpeech(): Promise<void> {
+    speechError = '';
+    speechNote = '';
     spoken = '';
     try {
-      apply(await downloadTts());
+      applySpeech(await downloadTts());
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err);
+      speechError = err instanceof Error ? err.message : String(err);
     }
   }
 
-  async function setEnabled(enabled: boolean): Promise<void> {
-    error = '';
-    note = '';
+  async function setSpeechEnabled(enabled: boolean): Promise<void> {
+    speechError = '';
+    speechNote = '';
     spoken = '';
     try {
-      apply(await setTtsEnabled(enabled));
+      applySpeech(await setTtsEnabled(enabled));
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err);
+      speechError = err instanceof Error ? err.message : String(err);
     }
   }
 
-  async function test(): Promise<void> {
-    error = '';
-    note = '';
+  async function testSpeechSample(): Promise<void> {
+    speechError = '';
+    speechNote = '';
     spoken = '';
-    testing = true;
-    const text = testSpeechText(feature?.model ?? null);
+    testingSpeech = true;
+    const text = testSpeechText(speech?.model ?? null);
     const started = performance.now();
     try {
-      const blob = await testSpeech(feature?.model ?? null);
+      const blob = await testSpeech(speech?.model ?? null);
       const delayMs = Math.round(performance.now() - started);
       if (audioUrl !== '') URL.revokeObjectURL(audioUrl);
       audioUrl = URL.createObjectURL(blob);
       await new Audio(audioUrl).play();
       spoken = text;
-      note = t('setup.tts.testOk', { ms: delayMs });
+      speechNote = t('setup.tts.testOk', { ms: delayMs });
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err);
+      speechError = err instanceof Error ? err.message : String(err);
     } finally {
-      testing = false;
+      testingSpeech = false;
     }
   }
 
-  function statusLabel(item: SetupFeature): string {
+  async function downloadDecisionModel(): Promise<void> {
+    decisionError = '';
+    decisionNote = '';
+    chosen = '';
+    try {
+      applyDecision(await downloadDecision());
+    } catch (err) {
+      decisionError = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  async function setDecision(enabled: boolean): Promise<void> {
+    decisionError = '';
+    decisionNote = '';
+    chosen = '';
+    try {
+      applyDecision(await setDecisionEnabled(enabled));
+    } catch (err) {
+      decisionError = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  async function testDecisionSample(): Promise<void> {
+    decisionError = '';
+    decisionNote = '';
+    chosen = '';
+    testingDecision = true;
+    const started = performance.now();
+    try {
+      const body = await testDecision();
+      const delayMs = Math.round(performance.now() - started);
+      const answer = body.answers.team?.choice ?? '';
+      chosen = answer;
+      decisionNote = t('setup.decision.testOk', { answer, ms: delayMs });
+    } catch (err) {
+      decisionError = err instanceof Error ? err.message : String(err);
+    } finally {
+      testingDecision = false;
+    }
+  }
+
+  function speechStatus(item: TtsSetupFeature): string {
     if (item.downloading) return t('setup.tts.downloading');
     if (!item.downloaded) return t('setup.tts.missing');
     return t(item.enabled ? 'setup.tts.on' : 'setup.tts.off');
+  }
+
+  function decisionStatus(item: DecisionSetupFeature): string {
+    if (item.models.length === 0) return t('setup.decision.unavailable');
+    if (item.downloading) return t('setup.decision.downloading');
+    if (!item.downloaded) return t('setup.decision.missing');
+    return t(item.enabled ? 'setup.decision.on' : 'setup.decision.off');
   }
 
   function bytes(value: number): string {
@@ -123,62 +201,107 @@
 </script>
 
 <div class="page-body">
-  {#if feature}
+  {#if speech}
     <section class="settings-card">
       <h2 class="setup-title">{$translate('setup.tts.title')}</h2>
       <p class="note">{$translate('setup.tts.hint')}</p>
-      {#if feature.models.length > 0 && feature.model}
+      {#if speech.models.length > 0 && speech.model}
         <label class="setup-model">
           <span>{$translate('setup.tts.model')}</span>
           <select
-            value={feature.model}
-            disabled={feature.downloading || testing}
+            value={speech.model}
+            disabled={speech.downloading || testingSpeech}
             onchange={(event) => void choose(event.currentTarget.value)}
           >
-            {#each feature.models as item (item.id)}
+            {#each speech.models as item (item.id)}
               <option value={item.id}>{$translate(item.id === 'zh' ? 'setup.tts.modelZh' : 'setup.tts.modelEn')}</option>
             {/each}
           </select>
         </label>
       {/if}
-      <p class="setup-status" class:is-on={feature.enabled}>{statusLabel(feature)}</p>
-      {#if feature.downloading && feature.total > 0}
+      <p class="setup-status" class:is-on={speech.enabled}>{speechStatus(speech)}</p>
+      {#if speech.downloading && speech.total > 0}
         <p class="note">
-          {$translate('setup.tts.progress', { received: bytes(feature.received), total: bytes(feature.total) })}
+          {$translate('setup.tts.progress', { received: bytes(speech.received), total: bytes(speech.total) })}
         </p>
         <div class="setup-bar" aria-hidden="true">
-          <span style:width={`${Math.min(100, Math.round((feature.received / feature.total) * 100))}%`}></span>
+          <span style:width={`${Math.min(100, Math.round((speech.received / speech.total) * 100))}%`}></span>
         </div>
       {/if}
       <div class="setup-actions">
-        {#if !feature.downloaded}
-          <button class="btn primary" type="button" disabled={feature.downloading} onclick={() => void download()}>
+        {#if !speech.downloaded}
+          <button class="btn primary" type="button" disabled={speech.downloading} onclick={() => void downloadSpeech()}>
             {$translate('setup.tts.download')}
           </button>
-        {:else if feature.enabled}
-          <button class="btn" type="button" onclick={() => void setEnabled(false)}>
+        {:else if speech.enabled}
+          <button class="btn" type="button" onclick={() => void setSpeechEnabled(false)}>
             {$translate('setup.tts.disable')}
           </button>
         {:else}
-          <button class="btn primary" type="button" onclick={() => void setEnabled(true)}>
+          <button class="btn primary" type="button" onclick={() => void setSpeechEnabled(true)}>
             {$translate('setup.tts.enable')}
           </button>
         {/if}
-        <button class="btn" type="button" disabled={!feature.enabled || testing} onclick={() => void test()}>
-          {$translate(testing ? 'setup.tts.testing' : 'setup.tts.test')}
+        <button class="btn" type="button" disabled={!speech.enabled || testingSpeech} onclick={() => void testSpeechSample()}>
+          {$translate(testingSpeech ? 'setup.tts.testing' : 'setup.tts.test')}
         </button>
       </div>
       {#if spoken}
         <p class="setup-spoken">{spoken}</p>
       {/if}
-      {#if note}
-        <p class="note">{note}</p>
+      {#if speechNote}
+        <p class="note">{speechNote}</p>
       {/if}
-      {#if error}
-        <p class="error">{error}</p>
+      {#if speechError}
+        <p class="error">{speechError}</p>
       {/if}
     </section>
-  {:else if error}
-    <p class="error">{error}</p>
+  {/if}
+
+  {#if decision}
+    <section class="settings-card">
+      <h2 class="setup-title">{$translate('setup.decision.title')}</h2>
+      <p class="note">{$translate('setup.decision.hint')}</p>
+      <p class="setup-status" class:is-on={decision.enabled}>{decisionStatus(decision)}</p>
+      {#if decision.downloading && decision.total > 0}
+        <p class="note">
+          {$translate('setup.decision.progress', { received: bytes(decision.received), total: bytes(decision.total) })}
+        </p>
+        <div class="setup-bar" aria-hidden="true">
+          <span style:width={`${Math.min(100, Math.round((decision.received / decision.total) * 100))}%`}></span>
+        </div>
+      {/if}
+      {#if decision.models.length > 0}
+        <div class="setup-actions">
+          {#if !decision.downloaded}
+            <button class="btn primary" type="button" disabled={decision.downloading} onclick={() => void downloadDecisionModel()}>
+              {$translate('setup.decision.download')}
+            </button>
+          {:else if decision.enabled}
+            <button class="btn" type="button" onclick={() => void setDecision(false)}>
+              {$translate('setup.decision.disable')}
+            </button>
+          {:else}
+            <button class="btn primary" type="button" onclick={() => void setDecision(true)}>
+              {$translate('setup.decision.enable')}
+            </button>
+          {/if}
+          <button class="btn" type="button" disabled={!decision.enabled || testingDecision} onclick={() => void testDecisionSample()}>
+            {$translate(testingDecision ? 'setup.decision.testing' : 'setup.decision.test')}
+          </button>
+        </div>
+      {/if}
+      {#if chosen}
+        <p class="setup-spoken">{chosen}</p>
+      {/if}
+      {#if decisionNote}
+        <p class="note">{decisionNote}</p>
+      {/if}
+      {#if decisionError}
+        <p class="error">{decisionError}</p>
+      {/if}
+    </section>
+  {:else if loadError}
+    <p class="error">{loadError}</p>
   {/if}
 </div>

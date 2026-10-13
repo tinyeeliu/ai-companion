@@ -9,6 +9,8 @@ import { GenQueue } from './gen/queue';
 import { DEFAULT_MODEL } from './gen';
 import { usesMlxEngine } from './tts/layout';
 import { createSpeech } from './tts/runtime';
+import { supportsDecision } from './decision/layout';
+import { createDecision } from './decision/runtime';
 import { linejsFactory } from './line';
 import { dataDir, ensureDir, genDir, listenHost, listenPort } from './paths';
 import { ConnectionStore } from './store';
@@ -107,6 +109,10 @@ const speech = createSpeech(root);
 console.log(
   `[companion] speech ${config.ttsEnabled ? 'enabled' : 'off'} (${usesMlxEngine() ? `mlx ${config.ttsModel ?? 'en'}` : 'sherpa'}; model downloads from the Setup page)`,
 );
+const decision = createDecision(root);
+console.log(
+  `[companion] decision ${config.decisionEnabled ? 'enabled' : 'off'} (${supportsDecision() ? 'mlx laya-multilingual' : 'unavailable'}; model downloads from the Setup page)`,
+);
 
 const app = createApp({
   manager,
@@ -115,6 +121,7 @@ const app = createApp({
   configRoot: root,
   ...(gen != null ? { gen: { queue: gen, drawThings, store: genImages, ready: cliReady } } : {}),
   tts: speech,
+  decision,
 });
 
 console.log(`[companion] listening on http://${host}:${config.port}`);

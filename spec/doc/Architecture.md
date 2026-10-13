@@ -259,6 +259,31 @@ disk (`af_heart` becomes name `Heart`). OS rows are always present; their id is
 Cantonese on Mac). That id is what `voice` accepts on the speech route, and
 only when `stream_format` is `speaker`.
 
+## Local decision
+
+`POST /api/v1/systemone.json` answers a TypeSafe System One body with
+**laya-multilingual** (`convaiinnovations/laya-multilingual`) through
+mlx-decision on Apple Silicon. The success body is that library's `to_wire()`
+result: `model`, `answers`, `usage`. Errors stay `{ error, message }`.
+
+| Request field | What happens |
+| --- | --- |
+| `state` | Required. A string or any JSON value |
+| `questions` | Required, non-empty map of `choice`, `noul`, and `score` questions |
+| `model` | `laya-multilingual`, or omitted. Any other name is `400` |
+
+Nothing is fetched at boot. On Apple Silicon the Setup page downloads `uv`,
+creates a Python 3.12 environment under `data/decision/python/` with pinned
+`mlx-decision` 0.8.1, and downloads the weights into `data/decision/hub`. That
+environment is separate from speech. Enable loads the weights into one resident
+process. Disable unloads them and leaves the files. The switch is
+`decisionEnabled` in `config.json`. Other machines have no model and the
+download is refused. Until the files are present the route answers
+`503 DECISION_NOT_READY`. Switched off, it answers `503 DECISION_DISABLED`.
+Decisions run one at a time, on their own queue, so a speech job does not hold
+up an answer. A full queue is `503 QUEUE_FULL`. A wedged call is
+`504 DECISION_TIMEOUT`. A failed call is `500 DECISION_FAILED`.
+
 ## REST
 
 Auth column: `loopback` means a caller on this machine needs no token; every other caller needs `Authorization: Bearer <token>`.
@@ -291,6 +316,9 @@ Auth column: `loopback` means a caller on this machine needs no token; every oth
 | GET | `/api/v1/setup.json` | loopback |
 | POST | `/api/v1/setup/tts/download.json` | loopback |
 | PUT | `/api/v1/setup/tts.json` | loopback |
+| POST | `/api/v1/systemone.json` | loopback |
+| POST | `/api/v1/setup/decision/download.json` | loopback |
+| PUT | `/api/v1/setup/decision.json` | loopback |
 
 The two image routes live outside `/api/v1/im/*` because they are not about a
 channel. They follow the same rule as everything else: open on loopback, bearer

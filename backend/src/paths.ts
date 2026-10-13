@@ -62,6 +62,11 @@ export function ttsDir(root: string): string {
   return join(root, 'tts');
 }
 
+/** laya-multilingual weights and the mlx-decision environment. Separate from speech. */
+export function decisionDir(root: string): string {
+  return join(root, 'decision');
+}
+
 export function whatsappRoot(root: string): string {
   return channelRoot(root, 'whatsapp');
 }

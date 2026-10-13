@@ -13,6 +13,7 @@ import { isDirectionFilter, isMessageStatus, type MessageQuery } from './message
 import { logJson } from './log';
 import { registerImageRoutes, type ImageRoutesOptions } from './gen';
 import { registerTtsRoutes, type TtsRoutesOptions } from './tts';
+import { registerDecisionRoutes, type DecisionRoutesOptions } from './decision';
 
 export interface AppOptions {
   manager: ConnectionManager;
@@ -37,6 +38,8 @@ export interface AppOptions {
   gen?: ImageRoutesOptions;
   /** Local speech. Always mounted in the real process; tests omit it. */
   tts?: TtsRoutesOptions;
+  /** Local decision. Always mounted in the real process; tests omit it. */
+  decision?: DecisionRoutesOptions;
 }
 
 /**
@@ -354,8 +357,19 @@ export function createApp(options: AppOptions): Hono {
   if (options.gen != null) {
     registerImageRoutes(app, options.gen);
   }
+  if (options.tts != null || options.decision != null) {
+    app.get('/api/v1/setup.json', async (c) => {
+      const features = [];
+      if (options.tts != null) features.push(await options.tts.setup.view());
+      if (options.decision != null) features.push(await options.decision.setup.view());
+      return c.json({ features });
+    });
+  }
   if (options.tts != null) {
     registerTtsRoutes(app, options.tts);
+  }
+  if (options.decision != null) {
+    registerDecisionRoutes(app, options.decision);
   }
 
   app.get('/*', serveStatic({ root: FRONTEND_DIR }));
