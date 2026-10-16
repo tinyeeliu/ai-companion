@@ -286,6 +286,35 @@ Decisions run one at a time, on their own queue, so a speech job does not hold
 up an answer. A full queue is `503 QUEUE_FULL`. A wedged call is
 `504 DECISION_TIMEOUT`. A failed call is `500 DECISION_FAILED`.
 
+## LLM Gateway
+
+`POST /codex/v1/chat/completions` forwards a Chat Completions body to a local
+[openai-api-server-via-codex](https://github.com/hotchpotch/openai-api-server-via-codex)
+process on `127.0.0.1:18080`. That port is internal. The model is a bare Codex
+name such as `gpt-5.6-luna`. The public base URL is
+`http://127.0.0.1:<companion port>/codex/v1`.
+
+`POST /codex/v1/responses` forwards a Responses body the same way. Retrieve
+(`GET`), delete, cancel, and `POST /codex/v1/responses/input_tokens` are
+forwarded under that prefix. The gateway's WebSocket relay is not proxied.
+
+`POST /v1/chat/completions` and `POST /v1/responses` are a provider router. A
+model `codex/gpt-5.6-luna` drops the `codex/` prefix and uses the same handler.
+Any other prefix is `404`. `POST /v1/responses/input_tokens` requires that
+prefix too. Retrieve, delete, and cancel under `/v1/responses/...` are
+forwarded without a model, because the id already belongs to this gateway.
+No other provider is registered.
+
+These paths use the same loopback-or-bearer rule as `/api/*`. The gateway is off
+until Setup turns it on. The binary is downloaded into `data/llm/` (pinned
+release v0.2.2) and is not fetched at boot. Codex login stays in
+`~/.codex/auth.json` from `codex login`. The switch is `llmEnabled` in
+`config.json`. `llmUseProxy` opts this feature into the shared `proxyUrl` from
+Settings. When the checkbox is on, the child receives `HTTPS_PROXY` and
+`NO_PROXY=localhost,127.0.0.1,::1`. When it is off, proxy variables are removed
+from the child so a proxy in the parent shell is not inherited. Off or not
+running, the routes answer `503`.
+
 ## REST
 
 Auth column: `loopback` means a caller on this machine needs no token; every other caller needs `Authorization: Bearer <token>`.

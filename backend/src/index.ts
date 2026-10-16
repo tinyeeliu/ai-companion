@@ -11,6 +11,7 @@ import { usesMlxEngine } from './tts/layout';
 import { createSpeech } from './tts/runtime';
 import { supportsDecision } from './decision/layout';
 import { createDecision } from './decision/runtime';
+import { LlmSetup } from './llm/setup';
 import { linejsFactory } from './line';
 import { dataDir, ensureDir, genDir, listenHost, listenPort } from './paths';
 import { ConnectionStore } from './store';
@@ -113,6 +114,11 @@ const decision = createDecision(root);
 console.log(
   `[companion] decision ${config.decisionEnabled ? 'enabled' : 'off'} (${supportsDecision() ? 'mlx laya-multilingual' : 'unavailable'}; model downloads from the Setup page)`,
 );
+const llm = new LlmSetup({ root, publicPort: config.port });
+await llm.restore();
+console.log(
+  `[companion] llm gateway ${config.llmEnabled ? 'enabled' : 'off'} (binary downloads from the Setup page)`,
+);
 
 const app = createApp({
   manager,
@@ -122,6 +128,7 @@ const app = createApp({
   ...(gen != null ? { gen: { queue: gen, drawThings, store: genImages, ready: cliReady } } : {}),
   tts: speech,
   decision,
+  llm: { setup: llm },
 });
 
 console.log(`[companion] listening on http://${host}:${config.port}`);

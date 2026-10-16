@@ -67,6 +67,11 @@ export function decisionDir(root: string): string {
   return join(root, 'decision');
 }
 
+/** Codex OpenAI gateway binary. A cache the Setup page fills. */
+export function llmDir(root: string): string {
+  return join(root, 'llm');
+}
+
 export function whatsappRoot(root: string): string {
   return channelRoot(root, 'whatsapp');
 }

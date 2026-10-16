@@ -1026,6 +1026,53 @@ td.summary {
   margin-top: 14px;
 }
 
+.setup-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  margin-top: 12px;
+}
+
+/* Text fields are width 100%. A checkbox must stay its own size or the label
+   is squeezed to the far edge of the card. */
+.setup-check input {
+  width: auto;
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+}
+
+.setup-steps {
+  margin: 12px 0 0;
+  padding-left: 18px;
+  color: var(--warn);
+}
+
+.example-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.example-curl {
+  width: 100%;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--field);
+  border: 1px solid var(--line);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .setup-model {
   display: flex;
   align-items: center;

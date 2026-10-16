@@ -57,37 +57,88 @@ export function configDecisionEnabled(root: string): boolean {
   return readConfig(root)?.decisionEnabled === true;
 }
 
+/** LLM Gateway stays off until Setup turns it on. A missing field is off. */
+export function configLlmEnabled(root: string): boolean {
+  return readConfig(root)?.llmEnabled === true;
+}
+
+/** The gateway uses the shared proxy only when Setup opts in. A missing field is off. */
+export function configLlmUseProxy(root: string): boolean {
+  return readConfig(root)?.llmUseProxy === true;
+}
+
+/** Shared proxy URL. Empty when unset. */
+export function configProxyUrl(root: string): string {
+  const value = readConfig(root)?.proxyUrl;
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+interface ConfigSnapshot {
+  token: string;
+  port: number;
+  modelsDir: string | null;
+  ttsEnabled: boolean;
+  ttsModel: 'en' | 'zh';
+  decisionEnabled: boolean;
+  llmEnabled: boolean;
+  llmUseProxy: boolean;
+  proxyUrl: string;
+}
+
+function snapshot(root: string, portDefault: number): ConfigSnapshot {
+  const parsed = readConfig(root);
+  return {
+    token: typeof parsed?.token === 'string' ? parsed.token : '',
+    port: typeof parsed?.port === 'number' ? parsed.port : portDefault,
+    modelsDir: configModelsDir(root),
+    ttsEnabled: parsed?.ttsEnabled === true,
+    ttsModel: parsed?.ttsModel === 'zh' ? 'zh' : 'en',
+    decisionEnabled: parsed?.decisionEnabled === true,
+    llmEnabled: parsed?.llmEnabled === true,
+    llmUseProxy: parsed?.llmUseProxy === true,
+    proxyUrl: typeof parsed?.proxyUrl === 'string' ? parsed.proxyUrl.trim() : '',
+  };
+}
+
+/** Write a full config. Callers pass a snapshot so a token save cannot drop a switch. */
+function persist(root: string, config: ConfigSnapshot): AppConfig {
+  ensureDir(root);
+  writeConfig(root, config);
+  return config;
+}
+
+function patchConfig(root: string, patch: Partial<ConfigSnapshot>, portDefault = DEFAULT_PORT): AppConfig {
+  const current = snapshot(root, portDefault);
+  const token = patch.token ?? (current.token !== '' ? current.token : newToken());
+  return persist(root, { ...current, ...patch, token });
+}
+
 export function loadOrCreateConfig(root: string, port: number = DEFAULT_PORT): AppConfig {
   ensureDir(root);
   const file = configPath(root);
   if (existsSync(file)) {
-    const parsed = JSON.parse(readFileSync(file, 'utf8')) as Partial<AppConfig>;
-    if (typeof parsed.token === 'string' && parsed.token !== '') {
-      const cfg: AppConfig = {
-        token: parsed.token,
-        port: typeof parsed.port === 'number' ? parsed.port : port,
-        modelsDir: configModelsDir(root),
-        ttsEnabled: parsed.ttsEnabled === true,
-        ttsModel: parsed.ttsModel === 'zh' ? 'zh' : 'en',
-        decisionEnabled: parsed.decisionEnabled === true,
-      };
-      if (cfg.port !== port) {
-        cfg.port = port;
-        writeConfig(root, cfg);
+    try {
+      const parsed = JSON.parse(readFileSync(file, 'utf8')) as Partial<AppConfig>;
+      if (typeof parsed.token === 'string' && parsed.token !== '') {
+        const cfg = snapshot(root, port);
+        if (cfg.port !== port) return persist(root, { ...cfg, port });
+        return cfg;
       }
-      return cfg;
+    } catch {
+      /* unreadable config: replace it below */
     }
   }
-  const cfg: AppConfig = {
+  return persist(root, {
     token: newToken(),
     port,
     modelsDir: null,
     ttsEnabled: false,
     ttsModel: 'en',
     decisionEnabled: false,
-  };
-  writeConfig(root, cfg);
-  return cfg;
+    llmEnabled: false,
+    llmUseProxy: false,
+    proxyUrl: '',
+  });
 }
 
 /**
@@ -97,27 +148,7 @@ export function loadOrCreateConfig(root: string, port: number = DEFAULT_PORT): A
  * returned value so the live guard reads the new token without a restart.
  */
 export function setConfigToken(root: string, token: string): AppConfig {
-  ensureDir(root);
-  const file = configPath(root);
-  let port = DEFAULT_PORT;
-  if (existsSync(file)) {
-    try {
-      const parsed = JSON.parse(readFileSync(file, 'utf8')) as Partial<AppConfig>;
-      if (typeof parsed.port === 'number') port = parsed.port;
-    } catch {
-      /* unreadable config: fall back to the default port */
-    }
-  }
-  const cfg: AppConfig = {
-    token,
-    port,
-    modelsDir: configModelsDir(root),
-    ttsEnabled: configTtsEnabled(root),
-    ttsModel: configTtsModel(root),
-    decisionEnabled: configDecisionEnabled(root),
-  };
-  writeConfig(root, cfg);
-  return cfg;
+  return patchConfig(root, { token });
 }
 
 /**
@@ -125,58 +156,12 @@ export function setConfigToken(root: string, token: string): AppConfig {
  * stay as they are — this call must not rotate a credential or move a model dir.
  */
 export function setConfigTtsEnabled(root: string, enabled: boolean): AppConfig {
-  ensureDir(root);
-  const file = configPath(root);
-  let token = '';
-  let port = DEFAULT_PORT;
-  if (existsSync(file)) {
-    try {
-      const parsed = JSON.parse(readFileSync(file, 'utf8')) as Partial<AppConfig>;
-      if (typeof parsed.token === 'string') token = parsed.token;
-      if (typeof parsed.port === 'number') port = parsed.port;
-    } catch {
-      /* unreadable config: keep the defaults and still record the switch */
-    }
-  }
-  if (token === '') token = newToken();
-  const cfg: AppConfig = {
-    token,
-    port,
-    modelsDir: configModelsDir(root),
-    ttsEnabled: enabled,
-    ttsModel: configTtsModel(root),
-    decisionEnabled: configDecisionEnabled(root),
-  };
-  writeConfig(root, cfg);
-  return cfg;
+  return patchConfig(root, { ttsEnabled: enabled });
 }
 
 /** Persist the Setup selector. The token, port, models directory, and switch stay. */
 export function setConfigTtsModel(root: string, model: 'en' | 'zh'): AppConfig {
-  ensureDir(root);
-  const file = configPath(root);
-  let token = '';
-  let port = DEFAULT_PORT;
-  if (existsSync(file)) {
-    try {
-      const parsed = JSON.parse(readFileSync(file, 'utf8')) as Partial<AppConfig>;
-      if (typeof parsed.token === 'string') token = parsed.token;
-      if (typeof parsed.port === 'number') port = parsed.port;
-    } catch {
-      /* unreadable config: keep the defaults and still record the model */
-    }
-  }
-  if (token === '') token = newToken();
-  const cfg: AppConfig = {
-    token,
-    port,
-    modelsDir: configModelsDir(root),
-    ttsEnabled: configTtsEnabled(root),
-    ttsModel: model,
-    decisionEnabled: configDecisionEnabled(root),
-  };
-  writeConfig(root, cfg);
-  return cfg;
+  return patchConfig(root, { ttsModel: model });
 }
 
 /**
@@ -184,30 +169,20 @@ export function setConfigTtsModel(root: string, model: 'en' | 'zh'): AppConfig {
  * and speech settings stay as they are.
  */
 export function setConfigDecisionEnabled(root: string, enabled: boolean): AppConfig {
-  ensureDir(root);
-  const file = configPath(root);
-  let token = '';
-  let port = DEFAULT_PORT;
-  if (existsSync(file)) {
-    try {
-      const parsed = JSON.parse(readFileSync(file, 'utf8')) as Partial<AppConfig>;
-      if (typeof parsed.token === 'string') token = parsed.token;
-      if (typeof parsed.port === 'number') port = parsed.port;
-    } catch {
-      /* unreadable config: keep the defaults and still record the switch */
-    }
-  }
-  if (token === '') token = newToken();
-  const cfg: AppConfig = {
-    token,
-    port,
-    modelsDir: configModelsDir(root),
-    ttsEnabled: configTtsEnabled(root),
-    ttsModel: configTtsModel(root),
-    decisionEnabled: enabled,
-  };
-  writeConfig(root, cfg);
-  return cfg;
+  return patchConfig(root, { decisionEnabled: enabled });
+}
+
+export function setConfigLlmEnabled(root: string, enabled: boolean): AppConfig {
+  return patchConfig(root, { llmEnabled: enabled });
+}
+
+export function setConfigLlmUseProxy(root: string, useProxy: boolean): AppConfig {
+  return patchConfig(root, { llmUseProxy: useProxy });
+}
+
+/** Empty clears the proxy. A feature that opted in then stops using one. */
+export function setConfigProxyUrl(root: string, proxyUrl: string): AppConfig {
+  return patchConfig(root, { proxyUrl: proxyUrl.trim() });
 }
 
 export function bearerToken(header: string | undefined): string | null {

@@ -1,18 +1,29 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
   import {
+    decisionExampleCurl,
     downloadDecision,
+    downloadLlm,
     downloadTts,
+    fetchHealth,
     getSetup,
+    llmExampleCurls,
     setDecisionEnabled,
+    setLlmEnabled,
+    setLlmUseProxy,
     setTtsEnabled,
     setTtsModel,
+    speechExampleCurl,
     testDecision,
+    testLlm,
     testSpeech,
     testSpeechText,
     type DecisionSetupFeature,
+    type LlmSetupFeature,
+    type LlmStep,
     type TtsSetupFeature,
   } from './api';
+  import ExampleDialog from './ExampleDialog.svelte';
   import { t, tr as translate } from './i18n';
 
   /**
@@ -21,15 +32,31 @@
    */
   let speech = $state<TtsSetupFeature | null>(null);
   let decision = $state<DecisionSetupFeature | null>(null);
+  let llm = $state<LlmSetupFeature | null>(null);
   let loadError = $state('');
   let speechError = $state('');
   let decisionError = $state('');
+  let llmError = $state('');
   let speechNote = $state('');
   let decisionNote = $state('');
+  let llmNote = $state('');
   let spoken = $state('');
   let chosen = $state('');
+  let replied = $state('');
   let testingSpeech = $state(false);
   let testingDecision = $state(false);
+  let testingLlm = $state(false);
+  let apiPort = $state(38000);
+  let example = $state<{ title: string; snippets: { label: string; text: string }[] } | null>(null);
+
+  const STEP_KEY: Record<LlmStep, string> = {
+    download: 'setup.llm.step.download',
+    login: 'setup.llm.step.login',
+    proxy: 'setup.llm.step.proxy',
+    port: 'setup.llm.step.port',
+    expired: 'setup.llm.step.expired',
+    unsupported: 'setup.llm.unavailable',
+  };
   let audioUrl = '';
   let timer: ReturnType<typeof setInterval> | undefined;
 
@@ -45,16 +72,24 @@
     syncPolling();
   }
 
+  function applyLlm(next: LlmSetupFeature): void {
+    llm = next;
+    if (next.error != null && next.error !== '') llmError = next.error;
+    syncPolling();
+  }
+
   async function load(): Promise<void> {
     const body = await getSetup();
     const tts = body.features.find((item): item is TtsSetupFeature => item.id === 'tts');
     const next = body.features.find((item): item is DecisionSetupFeature => item.id === 'decision');
+    const gateway = body.features.find((item): item is LlmSetupFeature => item.id === 'llm');
     if (tts != null) applySpeech(tts);
     if (next != null) applyDecision(next);
+    if (gateway != null) applyLlm(gateway);
   }
 
   function syncPolling(): void {
-    if (speech?.downloading || decision?.downloading) startPolling();
+    if (speech?.downloading || decision?.downloading || llm?.downloading) startPolling();
     else stopPolling();
   }
 
@@ -74,6 +109,11 @@
   }
 
   onMount(() => {
+    void fetchHealth()
+      .then((health) => {
+        if (health.port > 0) apiPort = health.port;
+      })
+      .catch(() => undefined);
     void load().catch((err: unknown) => {
       loadError = err instanceof Error ? err.message : String(err);
     });
@@ -194,6 +234,89 @@
     return t(item.enabled ? 'setup.decision.on' : 'setup.decision.off');
   }
 
+  function openSpeechExample(): void {
+    example = {
+      title: t('setup.tts.title'),
+      snippets: [{ label: t('setup.example.speech'), text: speechExampleCurl(apiPort) }],
+    };
+  }
+
+  function openDecisionExample(): void {
+    example = {
+      title: t('setup.decision.title'),
+      snippets: [{ label: t('setup.example.decision'), text: decisionExampleCurl(apiPort) }],
+    };
+  }
+
+  function openLlmExample(): void {
+    const curls = llmExampleCurls(apiPort);
+    example = {
+      title: t('setup.llm.title'),
+      snippets: [
+        { label: t('setup.example.llm'), text: curls.direct },
+        { label: t('setup.example.llmRouter'), text: curls.router },
+        { label: t('setup.example.llmResponses'), text: curls.responses },
+        { label: t('setup.example.llmResponsesRouter'), text: curls.responsesRouter },
+      ],
+    };
+  }
+
+  async function downloadGateway(): Promise<void> {
+    llmError = '';
+    llmNote = '';
+    replied = '';
+    try {
+      applyLlm(await downloadLlm());
+    } catch (err) {
+      llmError = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  async function setGateway(enabled: boolean): Promise<void> {
+    llmError = '';
+    llmNote = '';
+    replied = '';
+    try {
+      applyLlm(await setLlmEnabled(enabled));
+    } catch (err) {
+      llmError = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  async function setGatewayProxy(useProxy: boolean): Promise<void> {
+    llmError = '';
+    try {
+      applyLlm(await setLlmUseProxy(useProxy));
+    } catch (err) {
+      llmError = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  async function testGateway(): Promise<void> {
+    llmError = '';
+    llmNote = '';
+    replied = '';
+    testingLlm = true;
+    const started = performance.now();
+    try {
+      const body = await testLlm();
+      const delayMs = Math.round(performance.now() - started);
+      replied = body.text;
+      llmNote = t('setup.llm.testOk', { ms: body.ms || delayMs });
+    } catch (err) {
+      llmError = err instanceof Error ? err.message : String(err);
+    } finally {
+      testingLlm = false;
+    }
+  }
+
+  function llmStatus(item: LlmSetupFeature): string {
+    if (item.steps.includes('unsupported')) return t('setup.llm.unavailable');
+    if (item.downloading) return t('setup.llm.downloading');
+    if (!item.downloaded) return t('setup.llm.missing');
+    return t(item.enabled ? 'setup.llm.on' : 'setup.llm.off');
+  }
+
   function bytes(value: number): string {
     if (value < 1024 * 1024) return `${Math.max(1, Math.round(value / 1024))} KB`;
     return `${(value / (1024 * 1024)).toFixed(0)} MB`;
@@ -245,6 +368,9 @@
         <button class="btn" type="button" disabled={!speech.enabled || testingSpeech} onclick={() => void testSpeechSample()}>
           {$translate(testingSpeech ? 'setup.tts.testing' : 'setup.tts.test')}
         </button>
+        <button class="btn" type="button" onclick={openSpeechExample}>
+          {$translate('setup.example')}
+        </button>
       </div>
       {#if spoken}
         <p class="setup-spoken">{spoken}</p>
@@ -289,6 +415,15 @@
           <button class="btn" type="button" disabled={!decision.enabled || testingDecision} onclick={() => void testDecisionSample()}>
             {$translate(testingDecision ? 'setup.decision.testing' : 'setup.decision.test')}
           </button>
+          <button class="btn" type="button" onclick={openDecisionExample}>
+            {$translate('setup.example')}
+          </button>
+        </div>
+      {:else}
+        <div class="setup-actions">
+          <button class="btn" type="button" onclick={openDecisionExample}>
+            {$translate('setup.example')}
+          </button>
         </div>
       {/if}
       {#if chosen}
@@ -301,7 +436,86 @@
         <p class="error">{decisionError}</p>
       {/if}
     </section>
-  {:else if loadError}
+  {/if}
+
+  {#if llm}
+    <section class="settings-card">
+      <h2 class="setup-title">{$translate('setup.llm.title')}</h2>
+      <p class="note">{$translate('setup.llm.hint')}</p>
+      <p class="setup-status" class:is-on={llm.enabled}>{llmStatus(llm)}</p>
+      {#if llm.baseUrl}
+        <p class="note">{llm.baseUrl}</p>
+      {/if}
+      {#if llm.downloading && llm.total > 0}
+        <p class="note">
+          {$translate('setup.llm.progress', { received: bytes(llm.received), total: bytes(llm.total) })}
+        </p>
+        <div class="setup-bar" aria-hidden="true">
+          <span style:width={`${Math.min(100, Math.round((llm.received / llm.total) * 100))}%`}></span>
+        </div>
+      {/if}
+      {#if !llm.steps.includes('unsupported')}
+        <label class="setup-check">
+          <input
+            type="checkbox"
+            checked={llm.useProxy}
+            disabled={llm.downloading}
+            onchange={(event) => void setGatewayProxy(event.currentTarget.checked)}
+          />
+          <span>{$translate('setup.llm.useProxy')}</span>
+        </label>
+        <div class="setup-actions">
+          {#if !llm.downloaded}
+            <button class="btn primary" type="button" disabled={llm.downloading} onclick={() => void downloadGateway()}>
+              {$translate('setup.llm.download')}
+            </button>
+          {:else if llm.enabled}
+            <button class="btn" type="button" onclick={() => void setGateway(false)}>
+              {$translate('setup.llm.disable')}
+            </button>
+          {:else}
+            <button class="btn primary" type="button" onclick={() => void setGateway(true)}>
+              {$translate('setup.llm.enable')}
+            </button>
+          {/if}
+          <button class="btn" type="button" disabled={!llm.enabled || testingLlm} onclick={() => void testGateway()}>
+            {$translate(testingLlm ? 'setup.llm.testing' : 'setup.llm.test')}
+          </button>
+          <button class="btn" type="button" onclick={openLlmExample}>
+            {$translate('setup.example')}
+          </button>
+        </div>
+      {:else}
+        <div class="setup-actions">
+          <button class="btn" type="button" onclick={openLlmExample}>
+            {$translate('setup.example')}
+          </button>
+        </div>
+      {/if}
+      {#if llm.steps.length > 0}
+        <ol class="setup-steps">
+          {#each llm.steps as step (step)}
+            <li>{$translate(STEP_KEY[step])}</li>
+          {/each}
+        </ol>
+      {/if}
+      {#if replied}
+        <p class="setup-spoken">{replied}</p>
+      {/if}
+      {#if llmNote}
+        <p class="note">{llmNote}</p>
+      {/if}
+      {#if llmError}
+        <p class="error">{llmError}</p>
+      {/if}
+    </section>
+  {/if}
+
+  {#if loadError && !speech && !decision && !llm}
     <p class="error">{loadError}</p>
   {/if}
 </div>
+
+{#if example}
+  <ExampleDialog title={example.title} snippets={example.snippets} onClose={() => (example = null)} />
+{/if}

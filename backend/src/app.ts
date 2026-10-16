@@ -3,7 +3,9 @@ import { serveStatic } from 'hono/bun';
 import type { Context } from 'hono';
 import type { ConnectionManager } from './manager';
 import { FRONTEND_DIR } from './paths';
-import { bearerToken, isValidToken, newToken, setConfigToken } from './token';
+import { bearerToken, configProxyUrl, isValidToken, newToken, setConfigProxyUrl, setConfigToken } from './token';
+import { isProxyUrl } from './llm/layout';
+import { registerLlmRoutes, type LlmRoutesOptions } from './llm';
 import { clientIsLoopback, constantTimeEqual } from './auth';
 import { isChannel } from './channel';
 import { HttpError, jsonError } from './types';
@@ -40,6 +42,8 @@ export interface AppOptions {
   tts?: TtsRoutesOptions;
   /** Local decision. Always mounted in the real process; tests omit it. */
   decision?: DecisionRoutesOptions;
+  /** LLM Gateway. Always mounted in the real process; tests omit it. */
+  llm?: LlmRoutesOptions;
 }
 
 /**
@@ -133,15 +137,22 @@ export function createApp(options: AppOptions): Hono {
    * header is never consulted. Registered before the routes so it always runs,
    * with the one public health probe exempted.
    */
-  app.use('/api/*', async (c, next) => {
-    if (c.req.path === '/api/v1/im/health') return next();
+  async function guard(c: Context, next: () => Promise<void>): Promise<Response | void> {
     if (isLocalRequest(c)) return next();
     const got = bearerToken(c.req.header('authorization'));
     if (!constantTimeEqual(got, token)) {
       return c.json({ error: 'UNAUTHORIZED', message: 'Bearer token required' }, 401);
     }
     return next();
+  }
+
+  app.use('/api/*', async (c, next) => {
+    if (c.req.path === '/api/v1/im/health') return next();
+    return guard(c, next);
   });
+  // OpenAI-style paths sit outside /api, so the guard above does not cover them.
+  app.use('/codex/*', guard);
+  app.use('/v1/*', guard);
 
   /** Persists a new token and swaps it in for the live guard. */
   function applyToken(next: string): void {
@@ -149,7 +160,10 @@ export function createApp(options: AppOptions): Hono {
     if (configRoot != null) setConfigToken(configRoot, next);
   }
 
-  app.get('/api/v1/settings.json', (c) => c.json({ token }));
+  app.get('/api/v1/settings.json', (c) => c.json({
+    token,
+    proxyUrl: configRoot != null ? configProxyUrl(configRoot) : '',
+  }));
 
   app.put('/api/v1/settings.json', async (c) => {
     const body = await readJson(c);
@@ -163,6 +177,17 @@ export function createApp(options: AppOptions): Hono {
   app.post('/api/v1/settings/token/regenerate.json', (c) => {
     applyToken(newToken());
     return c.json({ token });
+  });
+
+  app.put('/api/v1/settings/proxy.json', async (c) => {
+    const body = await readJson(c);
+    if (typeof body.proxyUrl !== 'string' || !isProxyUrl(body.proxyUrl.trim())) {
+      throw new HttpError(400, 'INVALID_PARAM', 'proxyUrl must be an http or https URL, or empty');
+    }
+    const proxyUrl = body.proxyUrl.trim();
+    if (configRoot != null) setConfigProxyUrl(configRoot, proxyUrl);
+    await options.llm?.setup.applyProxyUrl();
+    return c.json({ proxyUrl });
   });
 
   app.get('/api/v1/im/connection.json', (c) => c.json({ connections: manager.views() }));
@@ -357,11 +382,12 @@ export function createApp(options: AppOptions): Hono {
   if (options.gen != null) {
     registerImageRoutes(app, options.gen);
   }
-  if (options.tts != null || options.decision != null) {
+  if (options.tts != null || options.decision != null || options.llm != null) {
     app.get('/api/v1/setup.json', async (c) => {
       const features = [];
       if (options.tts != null) features.push(await options.tts.setup.view());
       if (options.decision != null) features.push(await options.decision.setup.view());
+      if (options.llm != null) features.push(await options.llm.setup.view());
       return c.json({ features });
     });
   }
@@ -370,6 +396,9 @@ export function createApp(options: AppOptions): Hono {
   }
   if (options.decision != null) {
     registerDecisionRoutes(app, options.decision);
+  }
+  if (options.llm != null) {
+    registerLlmRoutes(app, options.llm);
   }
 
   app.get('/*', serveStatic({ root: FRONTEND_DIR }));

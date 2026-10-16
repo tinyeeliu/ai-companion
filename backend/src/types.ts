@@ -197,6 +197,20 @@ export interface AppConfig {
    * files are on disk. Absent means off, so an old config.json does not load it.
    */
   decisionEnabled?: boolean;
+  /**
+   * LLM Gateway is served only when this is true AND the Codex binary is on
+   * disk. Absent means off, so an old config.json does not start it.
+   */
+  llmEnabled?: boolean;
+  /**
+   * When true, the gateway child uses `proxyUrl`. Absent means a direct connection.
+   */
+  llmUseProxy?: boolean;
+  /**
+   * Shared proxy URL. Empty or absent means none is configured. A feature uses
+   * it only when that feature has opted in.
+   */
+  proxyUrl?: string;
 }
 
 export interface InboundText {

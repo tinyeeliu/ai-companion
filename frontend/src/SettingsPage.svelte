@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getSettings } from './api';
+  import { getSettings, saveProxy } from './api';
   import TokenDialog from './TokenDialog.svelte';
   import { t, tr as translate } from './i18n';
   import { tip } from './tooltip';
@@ -11,6 +11,10 @@
    * must send this value as `Authorization: Bearer <token>`.
    */
   let token = $state('');
+  let proxyUrl = $state('');
+  let proxyNote = $state('');
+  let proxyError = $state('');
+  let savingProxy = $state(false);
   let copied = $state(false);
   let copyTimer: ReturnType<typeof setTimeout> | undefined;
   let editing = $state(false);
@@ -20,6 +24,22 @@
   async function load(): Promise<void> {
     const settings = await getSettings();
     token = settings.token;
+    proxyUrl = settings.proxyUrl ?? '';
+  }
+
+  async function saveProxyUrl(): Promise<void> {
+    proxyNote = '';
+    proxyError = '';
+    savingProxy = true;
+    try {
+      const saved = await saveProxy(proxyUrl.trim());
+      proxyUrl = saved.proxyUrl;
+      proxyNote = t('settings.proxySaved');
+    } catch (err) {
+      proxyError = err instanceof Error ? err.message : String(err);
+    } finally {
+      savingProxy = false;
+    }
   }
 
   onMount(() => {
@@ -118,6 +138,36 @@
       {/if}
       {#if error}
         <p class="error">{error}</p>
+      {/if}
+    </div>
+  </div>
+
+  <div class="settings-card">
+    <div class="stack">
+      <span class="field-label">{$translate('settings.proxy')}</span>
+      <p class="note">{$translate('settings.proxyHint')}</p>
+      <label class="field">
+        {$translate('settings.proxyUrl')}
+        <input
+          bind:value={proxyUrl}
+          placeholder={$translate('settings.proxyPlaceholder')}
+          spellcheck="false"
+          oninput={() => {
+            proxyNote = '';
+            proxyError = '';
+          }}
+        />
+      </label>
+      <div class="row">
+        <button class="btn primary" type="button" disabled={savingProxy} onclick={() => void saveProxyUrl()}>
+          {$translate('common.save')}
+        </button>
+      </div>
+      {#if proxyNote}
+        <p class="note">{proxyNote}</p>
+      {/if}
+      {#if proxyError}
+        <p class="error">{proxyError}</p>
       {/if}
     </div>
   </div>

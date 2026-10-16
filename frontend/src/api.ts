@@ -97,7 +97,22 @@ export interface DecisionSetupFeature extends SetupFeatureBase {
   models: { id: 'laya-multilingual'; downloaded: boolean }[];
 }
 
-export type SetupFeature = TtsSetupFeature | DecisionSetupFeature;
+export type LlmStep = 'download' | 'login' | 'proxy' | 'port' | 'expired' | 'unsupported';
+
+export interface LlmSetupFeature {
+  id: 'llm';
+  downloaded: boolean;
+  enabled: boolean;
+  downloading: boolean;
+  received: number;
+  total: number;
+  error: string | null;
+  useProxy: boolean;
+  baseUrl: string | null;
+  steps: LlmStep[];
+}
+
+export type SetupFeature = TtsSetupFeature | DecisionSetupFeature | LlmSetupFeature;
 
 export function getSetup(): Promise<{ features: SetupFeature[] }> {
   return request('/api/v1/setup.json');
@@ -121,6 +136,22 @@ export function downloadDecision(): Promise<DecisionSetupFeature> {
 
 export function setDecisionEnabled(enabled: boolean): Promise<DecisionSetupFeature> {
   return request('/api/v1/setup/decision.json', { method: 'PUT', body: JSON.stringify({ enabled }) });
+}
+
+export function downloadLlm(): Promise<LlmSetupFeature> {
+  return request('/api/v1/setup/llm/download.json', { method: 'POST' });
+}
+
+export function setLlmEnabled(enabled: boolean): Promise<LlmSetupFeature> {
+  return request('/api/v1/setup/llm.json', { method: 'PUT', body: JSON.stringify({ enabled }) });
+}
+
+export function setLlmUseProxy(useProxy: boolean): Promise<LlmSetupFeature> {
+  return request('/api/v1/setup/llm.json', { method: 'PUT', body: JSON.stringify({ useProxy }) });
+}
+
+export function testLlm(): Promise<{ text: string; ms: number }> {
+  return request('/api/v1/setup/llm/test.json', { method: 'POST' });
 }
 
 const TEST_DECISION = {
@@ -147,6 +178,44 @@ export interface DecisionAnswer {
 /** One short multilingual choice, the same call the Test button makes. */
 export function testDecision(): Promise<{ answers: Record<string, DecisionAnswer> }> {
   return request('/api/v1/systemone.json', { method: 'POST', body: JSON.stringify(TEST_DECISION) });
+}
+
+function curl(port: number, path: string, body: unknown, output?: string): string {
+  const target = output != null ? `-o ${output} ` : '';
+  return `curl -sS ${target}http://127.0.0.1:${port}${path} \\
+  -H 'content-type: application/json' \\
+  -d '${JSON.stringify(body, null, 2)}'`;
+}
+
+/** A terminal command that speaks one sentence and writes speech.wav. */
+export function speechExampleCurl(port: number): string {
+  return curl(port, '/api/v1/audio/speech', {
+    model: 'kokoro-82m',
+    input: 'Hello from AI Companion.',
+    voice: 'af_heart',
+  }, 'speech.wav');
+}
+
+/** The same team-choice body the Decision test button sends. */
+export function decisionExampleCurl(port: number): string {
+  return curl(port, '/api/v1/systemone.json', TEST_DECISION);
+}
+
+/** Chat and Responses curls: the Codex path, and the router form that prefixes the model with codex/. */
+export function llmExampleCurls(port: number): {
+  direct: string;
+  router: string;
+  responses: string;
+  responsesRouter: string;
+} {
+  const message = { messages: [{ role: 'user', content: 'Say hello in one word.' }] };
+  const input = { input: 'Say hello in one word.' };
+  return {
+    direct: curl(port, '/codex/v1/chat/completions', { model: 'gpt-5.6-luna', ...message }),
+    router: curl(port, '/v1/chat/completions', { model: 'codex/gpt-5.6-luna', ...message }),
+    responses: curl(port, '/codex/v1/responses', { model: 'gpt-5.6-luna', ...input }),
+    responsesRouter: curl(port, '/v1/responses', { model: 'codex/gpt-5.6-luna', ...input }),
+  };
 }
 
 const TEST_INPUT: Record<'en' | 'zh', string> = {
@@ -350,8 +419,16 @@ export function replayMessage(
  * The API bearer token. Local callers are trusted, so this always answers on
  * this machine; external callers would need the token first.
  */
-export function getSettings(): Promise<{ token: string }> {
+export function getSettings(): Promise<{ token: string; proxyUrl: string }> {
   return request('/api/v1/settings.json');
+}
+
+/** Save the shared proxy URL. Empty clears it. The token is left alone. */
+export function saveProxy(proxyUrl: string): Promise<{ proxyUrl: string }> {
+  return request('/api/v1/settings/proxy.json', {
+    method: 'PUT',
+    body: JSON.stringify({ proxyUrl }),
+  });
 }
 
 /** Replace the token with a custom value. Returns the stored value. */
